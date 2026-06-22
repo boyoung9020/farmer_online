@@ -1,0 +1,23 @@
+; Engine configuration file.
+; 보구곶리 온라인 — 러프 프로토타입 (Godot 4.6)
+
+config_version=5
+
+[application]
+
+config/name="보구곶리 온라인"
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.6", "Forward Plus")
+
+[autoload]
+
+GameManager="*res://scripts/game_manager.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=1
