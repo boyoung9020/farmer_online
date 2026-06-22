@@ -14,6 +14,8 @@ var hud
 var tractor
 var shop
 var shop_ui
+var rice_field
+var paddy_panel
 var active := true
 var ui_open := false
 
@@ -45,6 +47,11 @@ func _build() -> void:
 		Color(0.85, 0.72, 0.4),   # 밀짚모자
 		false))
 
+## 트랙터에서 내릴 때 시점을 그대로 이어받기 위해 호출.
+func set_view(yaw: float, pitch: float) -> void:
+	_yaw = yaw
+	_pitch = pitch
+
 func set_active(on: bool) -> void:
 	active = on
 	visible = on
@@ -69,7 +76,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_F: _try_board()
-			KEY_E: _try_shop()
+			KEY_E: _try_interact()
 			KEY_ESCAPE:
 				if not ui_open:
 					Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -118,13 +125,22 @@ func _try_board() -> void:
 	if tractor != null and global_position.distance_to(tractor.global_position) <= BOARD_RANGE:
 		set_active(false)
 		tractor.board(_yaw, _pitch)
+		get_viewport().set_input_as_handled()  # 트랙터가 같은 F로 즉시 하차하지 않도록
 	elif hud != null:
 		hud.flash("트랙터가 멀어요 (가까이 가서 F)")
 
-func _try_shop() -> void:
-	if ui_open or shop == null or shop_ui == null:
+func _try_interact() -> void:
+	if ui_open:
 		return
-	if global_position.distance_to(shop.global_position) <= shop.INTERACT_RANGE:
+	# 고용소 우선
+	if shop != null and shop_ui != null and global_position.distance_to(shop.global_position) <= shop.INTERACT_RANGE:
 		shop_ui.open()
-	elif hud != null:
-		hud.flash("고용소가 멀어요 (가까이 가서 E)")
+		return
+	# 논 안이면 논 관리 패널
+	if rice_field != null and paddy_panel != null:
+		var pd = rice_field.paddy_at(global_position)
+		if pd != null:
+			paddy_panel.open(pd)
+			return
+	if hud != null:
+		hud.flash("논 안에서 E (또는 고용소 근처에서 E)")

@@ -2,7 +2,8 @@ extends Node3D
 ## 루트 씬. 환경/조명/지면/필지/농지/농부/트랙터/노동자/HUD/미니맵 구성(러프 단계).
 
 const ParcelLoaderScript := preload("res://scripts/parcel_loader.gd")
-const FarmFieldScript := preload("res://scripts/farm_field.gd")
+const RiceFieldScript := preload("res://scripts/rice_field.gd")
+const PaddyPanelScript := preload("res://scripts/paddy_panel.gd")
 const FarmerScript := preload("res://scripts/farmer.gd")
 const TractorScript := preload("res://scripts/tractor.gd")
 const WorkerManagerScript := preload("res://scripts/worker_manager.gd")
@@ -18,8 +19,8 @@ func _ready() -> void:
 	_setup_base_ground()
 	_setup_parcels()
 
-	var field = FarmFieldScript.new()
-	add_child(field)
+	var rice = RiceFieldScript.new()
+	add_child(rice)
 
 	var farmer = FarmerScript.new()
 	farmer.position = Vector3(0, 1.5, 30.0)   # 농지 남쪽에서 도보로 시작
@@ -27,7 +28,6 @@ func _ready() -> void:
 
 	var tractor = TractorScript.new()
 	tractor.position = Vector3(5, 1.5, 30.0)  # 농부 옆에 주차
-	tractor.field = field
 	add_child(tractor)
 
 	farmer.tractor = tractor
@@ -37,10 +37,10 @@ func _ready() -> void:
 	add_child(hud)
 	farmer.hud = hud
 	tractor.hud = hud
-	farmer.set_active(true)  # hud 연결 후 상태표시 갱신
+	rice.hud = hud
 
 	var wm = WorkerManagerScript.new()
-	wm.field = field
+	wm.rice = rice
 	wm.hud = hud
 	add_child(wm)
 
@@ -54,8 +54,17 @@ func _ready() -> void:
 	shop_ui.farmer = farmer
 	add_child(shop_ui)
 
+	# 논 관리 패널
+	var paddy_panel = PaddyPanelScript.new()
+	paddy_panel.farmer = farmer
+	paddy_panel.hud = hud
+	add_child(paddy_panel)
+
 	farmer.shop = shop
 	farmer.shop_ui = shop_ui
+	farmer.rice_field = rice
+	farmer.paddy_panel = paddy_panel
+	farmer.set_active(true)  # 참조 연결 후 상태표시 갱신
 
 	# 적 AI
 	var enemy = EnemyManagerScript.new()
@@ -89,7 +98,7 @@ func _setup_base_ground() -> void:
 	var ground := StaticBody3D.new()
 	var mi := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(1500, 1500)
+	pm.size = Vector2(14000, 14000)   # 보구곶리 전체(약 6.5km) 덮도록
 	mi.mesh = pm
 	mi.position.y = -0.05
 	var mat := StandardMaterial3D.new()
@@ -98,7 +107,7 @@ func _setup_base_ground() -> void:
 	ground.add_child(mi)
 	var col := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(1500, 0.2, 1500)
+	box.size = Vector3(14000, 0.2, 14000)
 	col.shape = box
 	col.position.y = -0.15
 	ground.add_child(col)

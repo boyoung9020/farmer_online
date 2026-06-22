@@ -21,15 +21,13 @@ const ATTACK_DMG := 12
 # main/매니저가 생성 시 설정
 var faction := FACTION_PLAYER
 var role := ROLE_SOLDIER
-var field
+var rice                           # RiceField (농사 노동자용)
 var rally := Vector3.ZERO         # 아군 군사 대기 지점
 var march_target := Vector3.ZERO   # 적군 진군 목표
 var max_health := 60
 
 var _health := 60
-var _target := Vector3.ZERO
-var _has_target := false
-var _mode := 0
+var _paddy = null
 var _atk_timer := 0.0
 
 func _ready() -> void:
@@ -77,22 +75,21 @@ func take_damage(amount: int) -> void:
 	if _health <= 0:
 		queue_free()
 
-# --- 농사(아군) ---
+# --- 농사(아군): 논을 돌며 자동 관리 ---
 func _farm_dir() -> Vector3:
-	if field == null:
+	if rice == null:
 		return Vector3.ZERO
-	if not _has_target:
-		var job: Dictionary = field.request_job(global_position)
-		if job.is_empty():
-			return Vector3.ZERO
-		_target = job["pos"]
-		_mode = job["mode"]
-		_has_target = true
-	var to := _target - global_position
+	if _paddy == null:
+		_paddy = rice.nearest_actionable_paddy(global_position)
+		if _paddy == null:
+			return Vector3.ZERO   # 할 일 없음
+	var to: Vector3 = _paddy.center - global_position
 	to.y = 0.0
-	if to.length() < WORK_RANGE:
-		field.work_at(_target, _mode)
-		_has_target = false
+	if to.length() < 4.0:
+		var act: String = _paddy.auto_next()
+		if act != "":
+			_paddy.do_action(act)
+		_paddy = null   # 다음 일감 재탐색
 		return Vector3.ZERO
 	return to.normalized()
 

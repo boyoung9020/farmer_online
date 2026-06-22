@@ -11,7 +11,8 @@ const ParcelScript := preload("res://scripts/parcel.gd")
 # 가장 필지가 밀집한 시작 기준점 (분석으로 산출)
 const HOME_X := 161025.0
 const HOME_Y := 573075.0
-const LOAD_RADIUS := 500.0  # 미터. 이 반경 안의 필지만 로드.
+const LOAD_RADIUS := 500.0  # 미터. (LOAD_ALL=false일 때) 이 반경 안의 필지만 로드.
+const LOAD_ALL := true       # true면 보구곶리 전체 필지(4,409개) 로드
 
 func _ready() -> void:
 	_load_parcels()
@@ -44,21 +45,23 @@ func _load_parcels() -> void:
 		if outer.size() < 4:
 			continue
 
-		# 중심점으로 반경 필터링
-		var cx := 0.0
-		var cy := 0.0
-		for p in outer:
-			cx += float(p[0])
-			cy += float(p[1])
-		cx /= outer.size()
-		cy /= outer.size()
-		if Vector2(cx, cy).distance_to(home) > LOAD_RADIUS:
-			continue
+		# 중심점으로 반경 필터링 (LOAD_ALL=false일 때만)
+		if not LOAD_ALL:
+			var cx := 0.0
+			var cy := 0.0
+			for p in outer:
+				cx += float(p[0])
+				cy += float(p[1])
+			cx /= outer.size()
+			cy /= outer.size()
+			if Vector2(cx, cy).distance_to(home) > LOAD_RADIUS:
+				continue
 
 		if _build_parcel(feat, outer, home):
 			loaded += 1
 
-	print("[ParcelLoader] 로드된 필지 수: %d (반경 %dm)" % [loaded, int(LOAD_RADIUS)])
+	var scope := "전체" if LOAD_ALL else "반경 %dm" % int(LOAD_RADIUS)
+	print("[ParcelLoader] 로드된 필지 수: %d (%s)" % [loaded, scope])
 
 ## 필지 한 개를 평면 메시 + 충돌체로 만들어 씬에 추가. 성공 시 true.
 func _build_parcel(feat: Dictionary, outer: Array, home: Vector2) -> bool:

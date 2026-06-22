@@ -5,6 +5,7 @@ class_name HUD
 
 var _money_label: Label
 var _mode_label: Label
+var _weather_label: Label
 var _workers_label: Label
 var _enemies_label: Label
 var _msg_label: Label
@@ -16,18 +17,23 @@ func _ready() -> void:
 	_load_korean_font()
 
 	_money_label = _make_label(Vector2(20, 16), 30)
-	_mode_label = _make_label(Vector2(20, 56), 22)
-	_workers_label = _make_label(Vector2(20, 90), 22)
-	_enemies_label = _make_label(Vector2(20, 122), 22)
-	_msg_label = _make_label(Vector2(20, 158), 20)
+	_weather_label = _make_label(Vector2(20, 54), 22)
+	_mode_label = _make_label(Vector2(20, 86), 22)
+	_workers_label = _make_label(Vector2(20, 118), 22)
+	_enemies_label = _make_label(Vector2(20, 150), 22)
+	_msg_label = _make_label(Vector2(20, 186), 20)
 	_help_label = _make_label(Vector2(20, 690), 16)
-	_help_label.text = "WASD: 이동/운전   F: 트랙터 타고/내리기   E: 고용소   1~4: 작업모드   M: 전체지도   마우스: 시점(상하반전)"
+	_help_label.text = "WASD: 이동/운전   F: 트랙터   E: 논 관리/고용소   M: 전체지도   휠: 지도확대/축소   마우스: 시점(반전)"
 
 	set_mode("도보")
+	set_weather("맑음")
 	set_workers(0, 0)
 	set_enemies(0)
 	GameManager.money_changed.connect(_on_money_changed)
 	_update_money(GameManager.money)
+
+func set_weather(wname: String) -> void:
+	_weather_label.text = "날씨: %s" % wname
 
 func _process(delta: float) -> void:
 	if _msg_timer > 0.0:

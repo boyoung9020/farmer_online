@@ -8,7 +8,8 @@ const VIEW_METERS := 130.0      # 작은 미니맵 범위(m)
 const MARGIN := 16
 
 const FULL_SIZE := 680          # 전체지도(px)
-const FULL_VIEW_METERS := 1150.0  # 전체지도 범위(m) — 로드 반경 500m을 모두 포함
+const FULL_VIEW_METERS := 7200.0  # 전체지도 범위(m) — 보구곶리 전체 포함
+const FULL_CENTER := Vector3(-1347, 0, -494)  # 지적도 전체의 중심(월드 좌표)
 
 var _player: Node3D
 
@@ -25,6 +26,10 @@ var _full_marker: Polygon2D
 var _full_center: Vector2
 var _full_visible := false
 
+# 줌(휠) — 보이는 범위(m), 작을수록 확대
+var _mini_view := VIEW_METERS
+var _full_view := FULL_VIEW_METERS
+
 func _ready() -> void:
 	var screen := get_viewport().get_visible_rect().size
 	_setup_minimap(screen)
@@ -40,7 +45,7 @@ func _setup_minimap(screen: Vector2) -> void:
 
 	_cam = Camera3D.new()
 	_cam.projection = Camera3D.PROJECTION_ORTHOGONAL
-	_cam.size = VIEW_METERS
+	_cam.size = _mini_view
 	_cam.rotation_degrees = Vector3(-90, 0, 0)
 	_cam.far = 2000.0
 	_cam.position = Vector3(0, 200, 0)
@@ -88,10 +93,10 @@ func _setup_fullmap(screen: Vector2) -> void:
 
 	_full_cam = Camera3D.new()
 	_full_cam.projection = Camera3D.PROJECTION_ORTHOGONAL
-	_full_cam.size = FULL_VIEW_METERS
+	_full_cam.size = _full_view
 	_full_cam.rotation_degrees = Vector3(-90, 0, 0)
-	_full_cam.far = 3000.0
-	_full_cam.position = Vector3(0, 600, 0)  # 시작 기준점(원점) 위에서 내려다봄
+	_full_cam.far = 5000.0
+	_full_cam.position = Vector3(FULL_CENTER.x, 1500, FULL_CENTER.z)  # 마을 전체 중심 위에서 내려다봄
 	_full_sv.add_child(_full_cam)
 
 	var fo := Vector2((screen.x - FULL_SIZE) * 0.5, (screen.y - FULL_SIZE) * 0.5)
@@ -121,6 +126,23 @@ func _make_marker() -> Polygon2D:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
 		_toggle_fullmap()
+	elif event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_zoom(-1.0)
+			get_viewport().set_input_as_handled()
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom(1.0)
+			get_viewport().set_input_as_handled()
+
+## 휠로 줌. dir<0 확대, dir>0 축소. 전체지도가 열려있으면 전체지도, 아니면 미니맵.
+func _zoom(dir: float) -> void:
+	var f := 1.18 if dir > 0.0 else 0.85
+	if _full_visible:
+		_full_view = clampf(_full_view * f, 300.0, 8000.0)
+		_full_cam.size = _full_view
+	else:
+		_mini_view = clampf(_mini_view * f, 40.0, 700.0)
+		_cam.size = _mini_view
 
 func _toggle_fullmap() -> void:
 	_full_visible = not _full_visible
@@ -142,7 +164,7 @@ func _process(_delta: float) -> void:
 
 	# 전체지도: 카메라는 고정, 마커를 플레이어 위치로 매핑
 	if _full_visible:
-		var px := (p.x / FULL_VIEW_METERS) * FULL_SIZE
-		var pz := (p.z / FULL_VIEW_METERS) * FULL_SIZE  # 월드 +Z = 화면 아래
+		var px := ((p.x - FULL_CENTER.x) / _full_view) * FULL_SIZE
+		var pz := ((p.z - FULL_CENTER.z) / _full_view) * FULL_SIZE  # 월드 +Z = 화면 아래
 		_full_marker.position = _full_center + Vector2(px, pz)
 		_full_marker.rotation = -_player.rotation.y
