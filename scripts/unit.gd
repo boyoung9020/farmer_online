@@ -21,23 +21,23 @@ const ATTACK_DMG := 12
 # main/매니저가 생성 시 설정
 var faction := FACTION_PLAYER
 var role := ROLE_SOLDIER
-var rice                           # RiceField (농사 노동자용)
+var field                           # FarmField (농사 노동자용)
 var rally := Vector3.ZERO         # 아군 군사 대기 지점
 var march_target := Vector3.ZERO   # 적군 진군 목표
 var max_health := 60
+var move_speed := SPEED            # 진영별로 덮어쓸 수 있는 이동 속도
 
 var _health := 60
-var _paddy = null
+var _target := Vector3.ZERO
+var _has_target := false
+var _mode := 0
 var _atk_timer := 0.0
 
 func _ready() -> void:
 	add_to_group("units")
-	if faction == FACTION_PLAYER:
-		add_to_group("player_units")
-		add_to_group("player_farmers" if role == ROLE_FARMER else "player_soldiers")
-	else:
-		add_to_group("enemy_units")
-		add_to_group("enemy_soldiers")
+	var side := "player" if faction == FACTION_PLAYER else "enemy"
+	add_to_group(side + "_units")
+	add_to_group(side + ("_farmers" if role == ROLE_FARMER else "_soldiers"))
 
 	var col := CollisionShape3D.new()
 	var cs := CapsuleShape3D.new()
@@ -60,8 +60,8 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	var dir := _farm_dir() if role == ROLE_FARMER else _combat_dir(delta)
 
-	velocity.x = dir.x * SPEED
-	velocity.z = dir.z * SPEED
+	velocity.x = dir.x * move_speed
+	velocity.z = dir.z * move_speed
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
 	else:
@@ -75,21 +75,22 @@ func take_damage(amount: int) -> void:
 	if _health <= 0:
 		queue_free()
 
-# --- 농사(아군): 논을 돌며 자동 관리 ---
+# --- 농사(아군): 밭을 돌며 자동 일구기/심기/수확 ---
 func _farm_dir() -> Vector3:
-	if rice == null:
+	if field == null:
 		return Vector3.ZERO
-	if _paddy == null:
-		_paddy = rice.nearest_actionable_paddy(global_position)
-		if _paddy == null:
-			return Vector3.ZERO   # 할 일 없음
-	var to: Vector3 = _paddy.center - global_position
+	if not _has_target:
+		var job: Dictionary = field.request_job(global_position)
+		if job.is_empty():
+			return Vector3.ZERO
+		_target = job["pos"]
+		_mode = job["mode"]
+		_has_target = true
+	var to := _target - global_position
 	to.y = 0.0
-	if to.length() < 4.0:
-		var act: String = _paddy.auto_next()
-		if act != "":
-			_paddy.do_action(act)
-		_paddy = null   # 다음 일감 재탐색
+	if to.length() < WORK_RANGE:
+		field.work_at(_target, _mode)
+		_has_target = false
 		return Vector3.ZERO
 	return to.normalized()
 

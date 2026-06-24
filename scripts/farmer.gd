@@ -14,8 +14,7 @@ var hud
 var tractor
 var shop
 var shop_ui
-var rice_field
-var paddy_panel
+var field
 var active := true
 var ui_open := false
 
@@ -76,7 +75,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_F: _try_board()
-			KEY_E: _try_interact()
+			KEY_E: _try_shop()
+			KEY_B: _try_build()
 			KEY_ESCAPE:
 				if not ui_open:
 					Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -129,18 +129,18 @@ func _try_board() -> void:
 	elif hud != null:
 		hud.flash("트랙터가 멀어요 (가까이 가서 F)")
 
-func _try_interact() -> void:
-	if ui_open:
+func _try_shop() -> void:
+	if ui_open or shop == null or shop_ui == null:
 		return
-	# 고용소 우선
-	if shop != null and shop_ui != null and global_position.distance_to(shop.global_position) <= shop.INTERACT_RANGE:
+	if global_position.distance_to(shop.global_position) <= shop.INTERACT_RANGE:
 		shop_ui.open()
+	elif hud != null:
+		hud.flash("고용소가 멀어요 (가까이 가서 E)")
+
+## 서 있는 칸에 논 건설(물길/기존 논 옆에서만).
+func _try_build() -> void:
+	if ui_open or field == null:
 		return
-	# 논 안이면 논 관리 패널
-	if rice_field != null and paddy_panel != null:
-		var pd = rice_field.paddy_at(global_position)
-		if pd != null:
-			paddy_panel.open(pd)
-			return
-	if hud != null:
-		hud.flash("논 안에서 E (또는 고용소 근처에서 E)")
+	var msg: String = field.build_paddy_at(global_position)
+	if hud != null and msg != "":
+		hud.flash(msg)

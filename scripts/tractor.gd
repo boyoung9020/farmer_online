@@ -1,6 +1,6 @@
 extends CharacterBody3D
-## 트랙터(탈것). 농부가 F로 탑승하면 운전 가능. 빠른 이동수단.
-## 차량식 조향(W/S 가감속, A/D 조향).
+## 트랙터(탈것). 농부가 F로 탑승하면 운전 가능.
+## 차량식 조향(W/S 가감속, A/D 조향) + 작업 모드(1~4: 운전/일구기/심기/수확).
 
 const MAX_SPEED := 12.0
 const ACCEL := 14.0
@@ -12,11 +12,13 @@ const WORK_WIDTH := 8.0
 
 var hud
 var farmer
+var field
 var active := false
 
 var _yaw := 0.0
 var _pitch := 0.55
 var _speed := 0.0
+var _mode := 0   # 0=운전, 1=일구기, 2=심기, 3=수확
 var _camera: Camera3D
 
 func _ready() -> void:
@@ -80,7 +82,7 @@ func _set_active(on: bool) -> void:
 		_camera.current = true
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		if hud != null:
-			hud.set_mode("트랙터 운전 (F: 내리기)")
+			hud.set_mode(_mode_name(_mode))
 	else:
 		remove_from_group("player")
 		_speed = 0.0
@@ -93,6 +95,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pitch = clamp(_pitch + event.relative.y * MOUSE_SENS, 0.15, 1.35)  # 상하 반전
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
+			KEY_1: _set_mode(0)
+			KEY_2: _set_mode(1)
+			KEY_3: _set_mode(2)
+			KEY_4: _set_mode(3)
 			KEY_F:
 				_exit()
 				get_viewport().set_input_as_handled()  # 농부가 같은 F로 재탑승하지 않도록
@@ -141,6 +147,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 	_update_camera()
+	_do_work()
 
 func _update_camera() -> void:
 	var target := global_position + Vector3.UP * 2.0
@@ -148,6 +155,29 @@ func _update_camera() -> void:
 	var v := sin(_pitch) * CAM_DIST
 	_camera.global_position = target + Vector3(sin(_yaw) * h, v, cos(_yaw) * h)
 	_camera.look_at(target, Vector3.UP)
+
+func _do_work() -> void:
+	if _mode == 0 or field == null:
+		return
+	var fwd := -global_transform.basis.z
+	var right := global_transform.basis.x
+	var center := global_position + fwd * 1.5
+	var samples := 5
+	for i in range(samples):
+		var t := (float(i) / float(samples - 1) - 0.5) * WORK_WIDTH
+		field.work_at(center + right * t, _mode)
+
+func _set_mode(m: int) -> void:
+	_mode = m
+	if hud != null:
+		hud.set_mode(_mode_name(m))
+
+func _mode_name(m: int) -> String:
+	match m:
+		1: return "일구기"
+		2: return "심기"
+		3: return "수확"
+		_: return "운전"
 
 ## 하차 — 농부를 옆에 내려놓고 도보로 전환.
 func _exit() -> void:

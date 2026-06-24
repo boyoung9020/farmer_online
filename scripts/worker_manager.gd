@@ -8,7 +8,7 @@ const SOLDIER_COST := 150
 const RALLY := Vector3(60, 0, 40)        # 군사 집결지
 const SPAWN_BASE := Vector3(-10, 1.0, 30) # 고용 시 등장 위치
 
-var rice
+var field
 var hud
 
 var _total := 0
@@ -34,7 +34,7 @@ func _hire(role: int, cost: int, label: String) -> bool:
 	var u := UnitScript.new()
 	u.faction = UnitScript.FACTION_PLAYER
 	u.role = role
-	u.rice = rice
+	u.field = field
 	u.rally = RALLY
 	@warning_ignore("integer_division")
 	var row := _total / 5
