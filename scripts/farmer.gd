@@ -9,6 +9,7 @@ const CAM_DIST := 7.0
 const BOARD_RANGE := 4.5
 
 const HumanMesh := preload("res://scripts/human_mesh.gd")
+const Visuals := preload("res://scripts/visuals.gd")
 
 var hud
 var tractor
@@ -26,6 +27,7 @@ func _ready() -> void:
 	_build()
 	_camera = Camera3D.new()
 	_camera.far = 2000.0
+	_camera.attributes = Visuals.camera_attrs()   # 원경 DOF
 	add_child(_camera)
 	set_active(active)
 
@@ -60,7 +62,7 @@ func set_active(on: bool) -> void:
 	if on:
 		add_to_group("player")
 		_camera.current = true
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		if hud != null:
 			hud.set_mode("도보 (F: 트랙터 탑승)")
 	else:
@@ -76,13 +78,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.keycode:
 			KEY_F: _try_board()
 			KEY_E: _try_shop()
-			KEY_B: _try_build()
-			KEY_ESCAPE:
-				if not ui_open:
-					Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	elif event is InputEventMouseButton and event.pressed:
-		if not ui_open and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
+			KEY_C: _try_build("canal")
+			KEY_B: _try_build("paddy")
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+		# 우클릭을 누르는 동안만 마우스를 잡고 시점 회전. 떼면 즉시 해제.
+		if event.pressed and not ui_open:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		else:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _physics_process(delta: float) -> void:
 	var move := Vector3.ZERO
@@ -137,10 +140,15 @@ func _try_shop() -> void:
 	elif hud != null:
 		hud.flash("고용소가 멀어요 (가까이 가서 E)")
 
-## 서 있는 칸에 논 건설(물길/기존 논 옆에서만).
-func _try_build() -> void:
+## 서 있는 칸에 건설. what: "canal"(물길) / "paddy"(논).
+func _try_build(what: String) -> void:
 	if ui_open or field == null:
 		return
-	var msg: String = field.build_paddy_at(global_position)
+	var msg: String
+	match what:
+		"canal":
+			msg = field.build_canal_at(global_position)
+		_:
+			msg = field.build_paddy_at(global_position)
 	if hud != null and msg != "":
 		hud.flash(msg)

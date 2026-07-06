@@ -49,6 +49,7 @@ func _setup_minimap(screen: Vector2) -> void:
 	_cam.rotation_degrees = Vector3(-90, 0, 0)
 	_cam.far = 2000.0
 	_cam.position = Vector3(0, 200, 0)
+	_cam.environment = _map_env()
 	sv.add_child(_cam)
 
 	var origin := Vector2(screen.x - MAP_SIZE - MARGIN, MARGIN)
@@ -97,6 +98,7 @@ func _setup_fullmap(screen: Vector2) -> void:
 	_full_cam.rotation_degrees = Vector3(-90, 0, 0)
 	_full_cam.far = 5000.0
 	_full_cam.position = Vector3(FULL_CENTER.x, 1500, FULL_CENTER.z)  # 마을 전체 중심 위에서 내려다봄
+	_full_cam.environment = _map_env()
 	_full_sv.add_child(_full_cam)
 
 	var fo := Vector2((screen.x - FULL_SIZE) * 0.5, (screen.y - FULL_SIZE) * 0.5)
@@ -116,6 +118,16 @@ func _setup_fullmap(screen: Vector2) -> void:
 	_full_center = fo + Vector2(FULL_SIZE, FULL_SIZE) * 0.5
 	_full_marker = _make_marker()
 	_full_root.add_child(_full_marker)
+
+## 지도 전용 환경 — 안개/GI 없이 균일하게 밝게(본 환경의 볼류메트릭 포그가 탑다운 뷰를 덮는 것 방지).
+func _map_env() -> Environment:
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.16, 0.22, 0.16)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color.WHITE
+	env.ambient_light_energy = 1.0
+	return env
 
 func _make_marker() -> Polygon2D:
 	var m := Polygon2D.new()

@@ -70,7 +70,7 @@ func open() -> void:
 
 func close() -> void:
 	visible = false
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if farmer != null:
 		farmer.ui_open = false
 

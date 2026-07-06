@@ -21,7 +21,7 @@ func _ready() -> void:
 	_enemies_label = _make_label(Vector2(20, 122), 22)
 	_msg_label = _make_label(Vector2(20, 158), 20)
 	_help_label = _make_label(Vector2(20, 690), 16)
-	_help_label.text = "WASD: 이동/운전   F: 트랙터   B: 논 건설   E: 고용소   1~4: 작업모드   M: 전체지도   휠: 지도확대/축소"
+	_help_label.text = "WASD: 이동/운전   우클릭 드래그: 시점   C: 물길(연못에서)   B: 논   F: 트랙터   E: 고용소   1~4: 작업모드   M: 전체지도"
 
 	set_mode("도보")
 	set_workers(0, 0)

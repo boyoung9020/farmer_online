@@ -9,7 +9,7 @@ const EconomyScript := preload("res://scripts/economy.gd")
 
 # 플레이어 농지(원점)에서 훨씬 멀리 떨어진 적 본거지.
 const ENEMY_ORIGIN := Vector3(60, 0, -520)
-const BASE_OFFSET := Vector3(0, 0, -16)        # 농지 북쪽에 적 기지
+const BASE_OFFSET := Vector3(0, 0, -44)        # 농지(연못 포함 구역) 북쪽 바깥에 적 기지
 const TARGET := Vector3(60, 0, 40)             # 플레이어 군사 집결지로 진군
 
 const START_MONEY := 300
@@ -36,6 +36,7 @@ func _ready() -> void:
 	_field.economy = _economy
 	_field.position = ENEMY_ORIGIN
 	add_child(_field)
+	_field.build_default_irrigation()   # 적은 저수지+물길이 이미 깔린 채 시작
 	_field.seed_paddies(SEED_PADDIES)   # 이미 개간된 논으로 시작
 
 	_build_base()
