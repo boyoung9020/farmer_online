@@ -13,7 +13,8 @@ const HumanMesh := preload("res://scripts/human_mesh.gd")
 const Visuals := preload("res://scripts/visuals.gd")
 
 var hud
-var tractor
+var tractor                 # (하위호환) 첫 탈것
+var vehicles: Array = []    # 탑승 가능한 탈것들(트랙터/이앙기)
 var shop
 var shop_ui
 var field
@@ -134,12 +135,22 @@ func _update_camera() -> void:
 func _try_board() -> void:
 	if ui_open:
 		return
-	if tractor != null and global_position.distance_to(tractor.global_position) <= BOARD_RANGE:
+	var list := vehicles if not vehicles.is_empty() else ([tractor] if tractor != null else [])
+	var best = null
+	var best_d := BOARD_RANGE
+	for v in list:
+		if v == null:
+			continue
+		var d: float = global_position.distance_to(v.global_position)
+		if d <= best_d:
+			best_d = d
+			best = v
+	if best != null:
 		set_active(false)
-		tractor.board(_yaw, _pitch)
-		get_viewport().set_input_as_handled()  # 트랙터가 같은 F로 즉시 하차하지 않도록
+		best.board(_yaw, _pitch)
+		get_viewport().set_input_as_handled()  # 탈것이 같은 F로 즉시 하차하지 않도록
 	elif hud != null:
-		hud.flash("트랙터가 멀어요 (가까이 가서 F)")
+		hud.flash("탈것이 멀어요 (트랙터/이앙기 옆에서 F)")
 
 func _try_shop() -> void:
 	if ui_open or shop == null or shop_ui == null:

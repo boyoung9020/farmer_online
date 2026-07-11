@@ -485,12 +485,41 @@ func _apply(idx: int, mode: int) -> void:
 				_paint(idx)
 
 # --- 시각 ---
+const SIDE_DIRS := [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]  # 북/남/서/동
+
 ## 칸 종류 변경 + 시각 갱신을 한 번에.
+## 물길이 되면 이웃 물길의 흙둑 연결도 다시 계산한다.
 func _set_kind(idx: int, kind: int) -> void:
 	_kind[idx] = kind
 	if kind == KIND_PADDY:
 		_state[idx] = EMPTY
 	_paint(idx)
+	if kind == KIND_CANAL:
+		var ix := idx % COLS
+		@warning_ignore("integer_division")
+		var iy := idx / COLS
+		for d: Vector2i in SIDE_DIRS:
+			var nx: int = ix + d.x
+			var ny: int = iy + d.y
+			if nx >= 0 and nx < COLS and ny >= 0 and ny < ROWS:
+				var nidx := ny * COLS + nx
+				if _kind[nidx] == KIND_CANAL:
+					_paint(nidx)
+
+## 물이 이어지는 방향 비트마스크(이웃이 물길/연못이면 그쪽으로 도랑이 트인다).
+func _canal_mask(idx: int) -> int:
+	var ix := idx % COLS
+	@warning_ignore("integer_division")
+	var iy := idx / COLS
+	var mask := 0
+	for i in range(4):
+		var nx: int = ix + SIDE_DIRS[i].x
+		var ny: int = iy + SIDE_DIRS[i].y
+		if nx >= 0 and nx < COLS and ny >= 0 and ny < ROWS:
+			var k := _kind[ny * COLS + nx]
+			if k == KIND_CANAL or k == KIND_POND:
+				mask |= 1 << i
+	return mask
 
 ## 셀 바닥 박스를 필요할 때 생성(풀밭 셀은 지형이 대신한다).
 func _ensure_ground(idx: int) -> MeshInstance3D:
@@ -516,8 +545,11 @@ func _paint(idx: int) -> void:
 				_ground[idx] = null
 			_set_extra(idx, "")
 		KIND_CANAL:
-			_ensure_ground(idx).material_override = Visuals.dirt_mat()
-			_set_extra(idx, "canal")
+			# 도랑은 바닥 박스 없이(지형 위에) 흙둑 단면 + 낮은 수면으로 판다
+			if _ground[idx] != null:
+				(_ground[idx] as Node).queue_free()
+				_ground[idx] = null
+			_set_extra(idx, "canal_%d" % _canal_mask(idx))
 		KIND_POND:
 			_ensure_ground(idx).material_override = Visuals.water_mat()
 			_set_extra(idx, "")
@@ -549,12 +581,33 @@ func _set_extra(idx: int, type: String) -> void:
 	root.position = Vector3(_cell_x(ix), 0.0, _cell_z(iy))
 	root.set_meta("type", type)
 
-	if type == "canal":
+	if type.begins_with("canal"):
+		# 도랑 단면: 물이 이어지지 않는 쪽에만 흙둑을 쌓고, 그 사이 낮은 수면
+		var mask := int(type.get_slice("_", 1))
+		for side in range(4):
+			if mask & (1 << side) != 0:
+				continue   # 그쪽으로 물이 이어짐 — 둑 없음
+			var b := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			var horizontal := side < 2
+			bm.size = Vector3(CELL + 0.2, 0.09, 0.55) if horizontal else Vector3(0.55, 0.09, CELL + 0.2)
+			b.mesh = bm
+			var off := CELL * 0.5 - 0.16
+			var tilt := 0.55
+			if horizontal:
+				b.position = Vector3(0, 0.2, -off if side == 0 else off)
+				b.rotation.x = tilt if side == 0 else -tilt
+			else:
+				b.position = Vector3(-off if side == 2 else off, 0.2, 0)
+				b.rotation.z = -tilt if side == 2 else tilt
+			b.material_override = Visuals.dirt_mat()
+			root.add_child(b)
+		# 도랑물(둑보다 낮게)
 		var w := MeshInstance3D.new()
 		var wm := BoxMesh.new()
-		wm.size = Vector3(CELL * 0.9, 0.06, CELL * 0.9)
+		wm.size = Vector3(CELL, 0.05, CELL)
 		w.mesh = wm
-		w.position = Vector3(0, 0.15, 0)
+		w.position = Vector3(0, 0.07, 0)
 		w.material_override = Visuals.muddy_water_mat()   # 흙탕 도랑물
 		root.add_child(w)
 

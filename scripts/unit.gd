@@ -32,6 +32,8 @@ var _target := Vector3.ZERO
 var _has_target := false
 var _mode := 0
 var _atk_timer := 0.0
+var _visual: Node3D          # 몸통 메시(모내기 숙임 연출용)
+var _bow := 0.0              # 남은 숙임 시간
 
 func _ready() -> void:
 	add_to_group("units")
@@ -49,11 +51,12 @@ func _ready() -> void:
 
 	var skin := Color(0.95, 0.78, 0.6)
 	if role == ROLE_FARMER:
-		add_child(HumanMesh.build(skin, Color(0.25, 0.7, 0.35), Color(0.3, 0.22, 0.16), Color(0.85, 0.72, 0.4), false))
+		_visual = HumanMesh.build(skin, Color(0.25, 0.7, 0.35), Color(0.3, 0.22, 0.16), Color(0.85, 0.72, 0.4), false)
 	elif faction == FACTION_PLAYER:
-		add_child(HumanMesh.build(skin, Color(0.2, 0.4, 0.85), Color(0.18, 0.2, 0.3), Color(0.5, 0.5, 0.55), true))  # 아군 파랑
+		_visual = HumanMesh.build(skin, Color(0.2, 0.4, 0.85), Color(0.18, 0.2, 0.3), Color(0.5, 0.5, 0.55), true)  # 아군 파랑
 	else:
-		add_child(HumanMesh.build(skin, Color(0.55, 0.12, 0.12), Color(0.12, 0.12, 0.14), Color(0.2, 0.2, 0.22), true))  # 적군 검붉음
+		_visual = HumanMesh.build(skin, Color(0.55, 0.12, 0.12), Color(0.12, 0.12, 0.14), Color(0.2, 0.2, 0.22), true)  # 적군 검붉음
+	add_child(_visual)
 
 	_health = max_health
 
@@ -69,6 +72,11 @@ func _physics_process(delta: float) -> void:
 	if dir.length() > 0.01:
 		rotation.y = lerp_angle(rotation.y, atan2(-dir.x, -dir.z), 0.2)
 	move_and_slide()
+
+	# 모내기 숙임(두레 연출) — 논일을 할 때 허리를 굽힌다
+	_bow = maxf(0.0, _bow - delta)
+	if _visual != null:
+		_visual.rotation.x = lerpf(_visual.rotation.x, -0.7 if _bow > 0.0 else 0.0, 0.18)
 
 func take_damage(amount: int) -> void:
 	_health -= amount
@@ -90,6 +98,7 @@ func _farm_dir() -> Vector3:
 	to.y = 0.0
 	if to.length() < WORK_RANGE:
 		field.work_at(_target, _mode)
+		_bow = 0.6   # 허리 굽혀 심기/거두기
 		_has_target = false
 		return Vector3.ZERO
 	return to.normalized()

@@ -7,6 +7,7 @@ const ParcelLoaderScript := preload("res://scripts/parcel_loader.gd")
 const FarmFieldScript := preload("res://scripts/farm_field.gd")
 const FarmerScript := preload("res://scripts/farmer.gd")
 const TractorScript := preload("res://scripts/tractor.gd")
+const TransplanterScript := preload("res://scripts/transplanter.gd")
 const WorkerManagerScript := preload("res://scripts/worker_manager.gd")
 const EnemyManagerScript := preload("res://scripts/enemy_manager.gd")
 const ShopScript := preload("res://scripts/shop.gd")
@@ -44,13 +45,21 @@ func _ready() -> void:
 	tractor.field = field
 	add_child(tractor)
 
+	var transplanter = TransplanterScript.new()
+	transplanter.position = Vector3(10, 1.5, 30.0)  # 트랙터 옆에 주차
+	transplanter.field = field
+	add_child(transplanter)
+
 	farmer.tractor = tractor
+	farmer.vehicles = [tractor, transplanter]
 	tractor.farmer = farmer
+	transplanter.farmer = farmer
 
 	var hud = HudScript.new()
 	add_child(hud)
 	farmer.hud = hud
 	tractor.hud = hud
+	transplanter.hud = hud
 
 	var wm = WorkerManagerScript.new()
 	wm.field = field
