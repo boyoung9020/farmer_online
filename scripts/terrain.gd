@@ -46,6 +46,14 @@ func height_at(x: float, z: float) -> float:
 		var d := Vector2(dx, dz).length()
 		flat_f = min(flat_f, smoothstep(0.0, 1.0, d / FLAT_FALLOFF))
 	var h := (_noise.get_noise_2d(x, z) * 0.5 + 0.5) * AMP
+
+	# 마을 뒷산(배산임수): 마을 북쪽에 숲 우거진 능선
+	var rx := x / 180.0
+	var rz := (z + 110.0) / 34.0
+	var ridge := 27.0 * exp(-(rx * rx + rz * rz) * 1.2)
+	ridge *= 0.7 + 0.6 * (_noise.get_noise_2d(x * 1.7 + 999.0, z * 1.7) * 0.5 + 0.5)
+	h += ridge
+
 	return h * edge_f * flat_f
 
 func _build_mesh() -> void:

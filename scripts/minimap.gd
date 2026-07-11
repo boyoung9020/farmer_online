@@ -138,7 +138,8 @@ func _make_marker() -> Polygon2D:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
 		_toggle_fullmap()
-	elif event is InputEventMouseButton and event.pressed:
+	elif _full_visible and event is InputEventMouseButton and event.pressed:
+		# 휠은 전체지도가 열려 있을 때만 지도 줌(평소엔 게임 카메라 줌)
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom(-1.0)
 			get_viewport().set_input_as_handled()
@@ -146,15 +147,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_zoom(1.0)
 			get_viewport().set_input_as_handled()
 
-## 휠로 줌. dir<0 확대, dir>0 축소. 전체지도가 열려있으면 전체지도, 아니면 미니맵.
+## 전체지도 휠 줌. dir<0 확대, dir>0 축소.
 func _zoom(dir: float) -> void:
 	var f := 1.18 if dir > 0.0 else 0.85
-	if _full_visible:
-		_full_view = clampf(_full_view * f, 300.0, 8000.0)
-		_full_cam.size = _full_view
-	else:
-		_mini_view = clampf(_mini_view * f, 40.0, 700.0)
-		_cam.size = _mini_view
+	_full_view = clampf(_full_view * f, 300.0, 8000.0)
+	_full_cam.size = _full_view
 
 func _toggle_fullmap() -> void:
 	_full_visible = not _full_visible

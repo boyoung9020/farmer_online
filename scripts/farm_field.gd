@@ -13,6 +13,8 @@ const ROWS := 32              # 북쪽 연못 + 완충 풀밭 + 남쪽 경작지
 const CELL := 2.0             # 셀 크기(미터)
 const CANAL_COST := 2         # 물길 1칸 건설 비용
 const PADDY_COST := 5         # 논 1칸 건설 비용
+const SCARECROW_COST := 15    # 허수아비 비용
+const SCARECROW_RANGE := 9.0  # 허수아비가 참새를 쫓는 반경(m)
 const SEED_COST := 2          # 셀당 씨앗값
 const HARVEST_VALUE := 10     # 셀당 수확 수익
 const GROW_TIME := 4.0        # 단계당 성장 시간(초)
@@ -21,8 +23,8 @@ const GROW_TIME := 4.0        # 단계당 성장 시간(초)
 const POND_CENTER := Vector2(15.0, 4.0)   # (ix, iy)
 const POND_RADIUS := 3.5                  # 셀 단위
 
-const RICE_ROWS := 6                          # 칸당 한 변의 모 줄 수(이앙기 줄심기)
-const RICE_PER_CELL := RICE_ROWS * RICE_ROWS  # 칸당 벼 포기 수(MultiMesh)
+const RICE_ROWS := 4                          # 칸당 한 변의 모 줄 수(이앙기 줄심기)
+const RICE_PER_CELL := RICE_ROWS * RICE_ROWS  # 칸당 벼 포기 수(MultiMesh) — 성능 고려 4x4
 
 # 칸 종류
 enum { KIND_GROUND, KIND_CANAL, KIND_PADDY, KIND_POND }
@@ -41,7 +43,15 @@ var _state: PackedInt32Array
 var _timer: PackedFloat32Array
 var _ground: Array = []       # MeshInstance3D 셀 바닥
 var _extra: Array = []        # 칸 위 구조물(물길 수면/논둑+담수). Node3D 또는 null
-var _rice_mm: MultiMesh
+var _rice_mms: Dictionary = {}   # 생육 단계 -> 벼 포기 MultiMesh (단계별 고정색 재질)
+var _ear_mm: MultiMesh           # 익은 벼 이삭(성숙 시에만 표시)
+var _scarecrows: Array = []      # 허수아비 월드 좌표 목록
+var _parcel: PackedInt32Array    # 셀 -> 필지 id (실제 논의 불규칙 필지 모자이크)
+var _parcel_rects: Array = []    # pid -> [x, y, w, h] (셀 좌표)
+var _parcel_deco: Dictionary = {}  # pid -> {"root": Node3D, "water": MeshInstance3D}
+
+# 필지별 색조(밝기) 변화 — 실제 논은 필지마다 톤이 다르다
+const PARCEL_TINTS := [1.0, 0.92, 1.08, 0.97]
 var _min_x: float
 var _min_z: float
 
@@ -63,24 +73,18 @@ func _ready() -> void:
 	_ground.resize(n)
 	_extra.resize(n)
 
+	_gen_parcels()
 	_setup_rice()
 
+	# 풀밭 셀은 바닥 박스를 만들지 않는다(지형이 곧 풀밭 — 드로우콜 절약).
+	# 물길/연못/논이 될 때 _ensure_ground()로 그때 생성.
 	for iy in range(ROWS):
 		for ix in range(COLS):
 			var idx := iy * COLS + ix
-			_kind[idx] = KIND_GROUND   # 빈 풀밭에서 시작(관개는 건설로)
+			_kind[idx] = KIND_GROUND
 			_state[idx] = EMPTY
 			_timer[idx] = 0.0
-
-			var g := MeshInstance3D.new()
-			var gm := BoxMesh.new()
-			gm.size = Vector3(CELL, 0.12, CELL)
-			g.mesh = gm
-			g.position = Vector3(_cell_x(ix), 0.06, _cell_z(iy))
-			add_child(g)
-			_ground[idx] = g
-
-			_paint(idx)
+			_ground[idx] = null
 
 	_carve_pond()
 	print("[FarmField] %dx%d 구역, 북쪽 공용 연못. C: 물길, B: 논 건설." % [COLS, ROWS])
@@ -91,23 +95,121 @@ func _cell_x(ix: int) -> float:
 func _cell_z(iy: int) -> float:
 	return _min_z + (iy + 0.5) * CELL
 
-## 벼 포기 MultiMesh — 논 전체의 벼를 인스턴스 하나로 그린다.
+## 필지 분할(BSP): 실제 논처럼 크기·모양이 제각각인 필지 모자이크를 만든다.
+## 논둑은 필지 경계에만 서고, 필지마다 색조/수위가 미세하게 다르다.
+func _gen_parcels() -> void:
+	_parcel = PackedInt32Array()
+	_parcel.resize(COLS * ROWS)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	var stack: Array = [[0, 0, COLS, ROWS]]
+	var pid := 0
+	while not stack.is_empty():
+		var r: Array = stack.pop_back()
+		var x: int = r[0]
+		var y: int = r[1]
+		var w: int = r[2]
+		var h: int = r[3]
+		var can_w := w >= 6
+		var can_h := h >= 6
+		if (not can_w and not can_h) or (w <= 7 and h <= 7 and rng.randf() < 0.55):
+			for iy in range(y, y + h):
+				for ix in range(x, x + w):
+					_parcel[iy * COLS + ix] = pid
+			_parcel_rects.append([x, y, w, h])
+			pid += 1
+			continue
+		if can_w and (w >= h or not can_h):
+			var cut := rng.randi_range(3, w - 3)
+			stack.append([x, y, cut, h])
+			stack.append([x + cut, y, w - cut, h])
+		else:
+			var cut := rng.randi_range(3, h - 3)
+			stack.append([x, y, w, cut])
+			stack.append([x, y + cut, w, h - cut])
+
+func _parcel_tint(idx: int) -> Color:
+	var f: float = PARCEL_TINTS[_parcel[idx] % PARCEL_TINTS.size()]
+	return Color(f, f, f * 0.98)
+
+## 필지 구조물(둘레 논둑 + 필지 전체 담수 한 장) — 필지에 첫 논이 생길 때 만든다.
+## 셀당 둑 4개 대신 필지당 박스 5개라 드로우콜이 크게 준다.
+func _ensure_parcel_deco(pid: int) -> void:
+	if _parcel_deco.has(pid):
+		return
+	var r: Array = _parcel_rects[pid]
+	var w_m: float = r[2] * CELL
+	var h_m: float = r[3] * CELL
+	var cx: float = _min_x + (r[0] + r[2] * 0.5) * CELL
+	var cz: float = _min_z + (r[1] + r[3] * 0.5) * CELL
+
+	var root := Node3D.new()
+	root.position = Vector3(cx, 0.0, cz)
+
+	# 둘레 논둑(풀 덮인 흙둑)
+	var bund_h := 0.22
+	for side in range(4):
+		var b := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		var horizontal := side < 2
+		bm.size = Vector3(w_m + 0.24, bund_h, 0.26) if horizontal else Vector3(0.26, bund_h, h_m + 0.24)
+		b.mesh = bm
+		b.position = Vector3(0, bund_h * 0.5 + 0.04, (-h_m if side == 0 else h_m) * 0.5) if horizontal \
+			else Vector3((-w_m if side == 2 else w_m) * 0.5, bund_h * 0.5 + 0.04, 0)
+		b.material_override = Visuals.grass_mat()
+		root.add_child(b)
+
+	# 필지 담수(한 장) — 필지 안 논이 하나라도 경운되면 보인다
+	var wtr := MeshInstance3D.new()
+	var wm := BoxMesh.new()
+	wm.size = Vector3(w_m - 0.3, 0.05, h_m - 0.3)
+	wtr.mesh = wm
+	wtr.position = Vector3(0, 0.15 + float(pid % 3) * 0.012, 0)
+	wtr.material_override = Visuals.paddy_water_mat(pid % 3)
+	wtr.visible = false
+	root.add_child(wtr)
+
+	add_child(root)
+	_parcel_deco[pid] = {"root": root, "water": wtr}
+
+## 필지 담수 표시 갱신 — 경운된 논이 하나라도 있으면 물을 댄다.
+func _update_parcel_water(pid: int) -> void:
+	if not _parcel_deco.has(pid):
+		return
+	var r: Array = _parcel_rects[pid]
+	var flooded := false
+	for iy in range(r[1], r[1] + r[3]):
+		for ix in range(r[0], r[0] + r[2]):
+			var idx := iy * COLS + ix
+			if _kind[idx] == KIND_PADDY and _state[idx] != EMPTY:
+				flooded = true
+				break
+		if flooded:
+			break
+	(_parcel_deco[pid]["water"] as MeshInstance3D).visible = flooded
+
+## 벼 MultiMesh — 생육 단계별 포기 3벌 + 이삭 1벌. 단계 색은 재질 유니폼으로 고정.
 func _setup_rice() -> void:
-	var blade := BoxMesh.new()
-	blade.size = Vector3(0.05, 1.0, 0.05)   # 가는 모 — 자라면서 스케일로 굵어진다
-	_rice_mm = MultiMesh.new()
-	_rice_mm.transform_format = MultiMesh.TRANSFORM_3D
-	_rice_mm.use_colors = true
-	_rice_mm.mesh = blade
-	_rice_mm.instance_count = COLS * ROWS * RICE_PER_CELL
+	_rice_mms[PLANTED] = _make_mm(Visuals.rice_clump_mesh(), Color(0.38, 0.72, 0.28))  # 모(연두)
+	_rice_mms[GROWING] = _make_mm(Visuals.rice_clump_mesh(), Color(0.16, 0.42, 0.13))  # 분얼기 진초록
+	_rice_mms[MATURE] = _make_mm(Visuals.rice_clump_mesh(), Color(0.42, 0.45, 0.16))   # 성숙기 황록 잎
+	_ear_mm = _make_mm(Visuals.rice_ear_mesh(), Color(0.74, 0.58, 0.24))               # 황금 이삭
+
+func _make_mm(mesh: Mesh, col: Color) -> MultiMesh:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = COLS * ROWS * RICE_PER_CELL
 	var zero := Transform3D().scaled(Vector3(0.001, 0.001, 0.001))
-	for i in range(_rice_mm.instance_count):
-		_rice_mm.set_instance_transform(i, zero)
-		_rice_mm.set_instance_color(i, Color.WHITE)
+	for i in range(mm.instance_count):
+		mm.set_instance_transform(i, zero)
 	var mmi := MultiMeshInstance3D.new()
-	mmi.multimesh = _rice_mm
-	mmi.material_override = Visuals.rice_mat()
+	mmi.multimesh = mm
+	mmi.material_override = Visuals.sway_mat(col)
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mmi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED   # 흔들리는 초목은 GI 제외(성능)
 	add_child(mmi)
+	return mm
 
 ## 마을 공용 연못: 반경 안 칸을 물로 바꾸고, 둥근 수면/둑 장식을 얹는다.
 func _carve_pond() -> void:
@@ -236,6 +338,52 @@ func build_paddy_at(world_pos: Vector3) -> String:
 	_set_kind(idx, KIND_PADDY)
 	return "논 건설 완료! (-%d원)" % PADDY_COST
 
+## 서 있는 칸에 허수아비 설치. 풀밭/논 위 어디든 가능(물길·연못 제외).
+func build_scarecrow_at(world_pos: Vector3) -> String:
+	var idx := _cell_index(world_pos)
+	if idx < 0:
+		return "농지 밖입니다"
+	if _kind[idx] == KIND_CANAL or _kind[idx] == KIND_POND:
+		return "물 위에는 허수아비를 못 세웁니다"
+	var pos := _cell_pos(idx)
+	for sc: Vector3 in _scarecrows:
+		if sc.distance_to(pos) < 3.0:
+			return "여기엔 이미 허수아비가 있어요"
+	if not _eco().spend_money(SCARECROW_COST):
+		return "돈 부족 — 허수아비 %d원" % SCARECROW_COST
+	var model := Visuals.load_glb("res://assets/models/scarecrow.glb")
+	if model != null:
+		model.position = to_local(pos)
+		model.position.y = 0.1
+		model.rotation.y = PI + (float(idx % 7) - 3.0) * 0.2   # 삐뚤빼뚤하게
+		add_child(model)
+	_scarecrows.append(pos)
+	return "허수아비 세움! 참새가 얼씬 못 합니다 (-%d원)" % SCARECROW_COST
+
+## 참새 방어: 이 위치가 허수아비 반경 안인가.
+func is_guarded(world_pos: Vector3) -> bool:
+	for sc: Vector3 in _scarecrows:
+		if sc.distance_to(world_pos) <= SCARECROW_RANGE:
+			return true
+	return false
+
+## 참새용: 익은 벼 칸 하나를 무작위로. 없으면 {}.
+func random_mature_cell() -> Dictionary:
+	var candidates: Array = []
+	for idx in range(_state.size()):
+		if _kind[idx] == KIND_PADDY and _state[idx] == MATURE:
+			candidates.append(idx)
+	if candidates.is_empty():
+		return {}
+	var idx: int = candidates[randi() % candidates.size()]
+	return {"idx": idx, "pos": _cell_pos(idx)}
+
+## 참새가 벼를 쪼아먹음 — 익은 벼가 수확 없이 사라진다.
+func bird_eat(idx: int) -> void:
+	if idx >= 0 and idx < _kind.size() and _kind[idx] == KIND_PADDY and _state[idx] == MATURE:
+		_state[idx] = TILLED
+		_paint(idx)
+
 ## 4방향 이웃 중 물길/연못/기존 논이 있으면 true (물이 닿는 칸).
 func _adjacent_to_water(idx: int) -> bool:
 	return _adjacent_to_any(idx, [KIND_CANAL, KIND_POND, KIND_PADDY])
@@ -344,27 +492,46 @@ func _set_kind(idx: int, kind: int) -> void:
 		_state[idx] = EMPTY
 	_paint(idx)
 
+## 셀 바닥 박스를 필요할 때 생성(풀밭 셀은 지형이 대신한다).
+func _ensure_ground(idx: int) -> MeshInstance3D:
+	if _ground[idx] != null:
+		return _ground[idx]
+	var ix := idx % COLS
+	@warning_ignore("integer_division")
+	var iy := idx / COLS
+	var g := MeshInstance3D.new()
+	var gm := BoxMesh.new()
+	gm.size = Vector3(CELL, 0.12, CELL)
+	g.mesh = gm
+	g.position = Vector3(_cell_x(ix), 0.06, _cell_z(iy))
+	add_child(g)
+	_ground[idx] = g
+	return g
+
 func _paint(idx: int) -> void:
-	var g: MeshInstance3D = _ground[idx]
 	match _kind[idx]:
 		KIND_GROUND:
-			g.material_override = Visuals.grass_mat(idx)
+			if _ground[idx] != null:
+				(_ground[idx] as Node).queue_free()
+				_ground[idx] = null
 			_set_extra(idx, "")
 		KIND_CANAL:
-			g.material_override = Visuals.dirt_mat()
+			_ensure_ground(idx).material_override = Visuals.dirt_mat()
 			_set_extra(idx, "canal")
 		KIND_POND:
-			g.material_override = Visuals.water_mat()
+			_ensure_ground(idx).material_override = Visuals.water_mat()
 			_set_extra(idx, "")
 		KIND_PADDY:
-			g.material_override = Visuals.dry_mud_mat() if _state[idx] == EMPTY else Visuals.wet_mud_mat()
-			_set_extra(idx, "paddy")
-			# 경운 전(마른 논)에는 물이 없고, 경운하면 물을 댄다.
-			var water: MeshInstance3D = _extra[idx].get_node("water")
-			water.visible = _state[idx] != EMPTY
+			var tint := _parcel_tint(idx)
+			_ensure_ground(idx).material_override = \
+				Visuals.dry_mud_mat(tint) if _state[idx] == EMPTY else Visuals.wet_mud_mat(tint)
+			_set_extra(idx, "")
+			var pid: int = _parcel[idx]
+			_ensure_parcel_deco(pid)
+			_update_parcel_water(pid)
 	_update_rice(idx)
 
-## 칸 위 구조물 교체. type: "" / "canal"(수면) / "paddy"(논둑+담수).
+## 칸 위 구조물 교체. type: "" / "canal"(도랑물).
 func _set_extra(idx: int, type: String) -> void:
 	var cur: Node3D = _extra[idx]
 	if cur != null and cur.get_meta("type", "") == type:
@@ -390,55 +557,32 @@ func _set_extra(idx: int, type: String) -> void:
 		w.position = Vector3(0, 0.15, 0)
 		w.material_override = Visuals.muddy_water_mat()   # 흙탕 도랑물
 		root.add_child(w)
-	elif type == "paddy":
-		# 논둑 — 풀이 덮인 낮은 흙둑이 칸을 두른다(실제 논둑).
-		var bund_h := 0.22
-		for side in range(4):
-			var b := MeshInstance3D.new()
-			var bm := BoxMesh.new()
-			var horizontal := side < 2
-			bm.size = Vector3(CELL, bund_h, 0.24) if horizontal else Vector3(0.24, bund_h, CELL)
-			b.mesh = bm
-			var off := CELL * 0.5 - 0.1
-			b.position = Vector3(0, bund_h * 0.5 + 0.06, -off if side == 0 else off) if horizontal \
-				else Vector3(-off if side == 2 else off, bund_h * 0.5 + 0.06, 0)
-			b.material_override = Visuals.grass_mat()
-			root.add_child(b)
-		# 담수 수면
-		var w := MeshInstance3D.new()
-		var wm := BoxMesh.new()
-		wm.size = Vector3(CELL * 0.82, 0.05, CELL * 0.82)
-		w.mesh = wm
-		w.name = "water"
-		w.position = Vector3(0, 0.16, 0)
-		w.material_override = Visuals.paddy_water_mat()
-		root.add_child(w)
 
 	add_child(root)
 	_extra[idx] = root
 
-## 논 칸의 벼 포기 갱신 — 이앙기처럼 줄 맞춰 심고, 자랄수록 키·부피가 커져 수면을 덮는다.
+## 논 칸의 벼 갱신 — 이앙기처럼 줄 맞춰 심고, 자랄수록 키·부피가 커져 수면을 덮는다.
+## 성숙하면 잎은 황록색으로 남고 포기 끝에 황금 이삭이 고개를 숙인다(레퍼런스 기준).
 func _update_rice(idx: int) -> void:
 	var base := idx * RICE_PER_CELL
 	var s := _state[idx]
+	var zero := Transform3D().scaled(Vector3(0.001, 0.001, 0.001))
 	var has_rice: bool = _kind[idx] == KIND_PADDY and (s == PLANTED or s == GROWING or s == MATURE)
 	if not has_rice:
-		var zero := Transform3D().scaled(Vector3(0.001, 0.001, 0.001))
 		for b in range(RICE_PER_CELL):
-			_rice_mm.set_instance_transform(base + b, zero)
+			for mm: MultiMesh in _rice_mms.values():
+				mm.set_instance_transform(base + b, zero)
+			_ear_mm.set_instance_transform(base + b, zero)
 		return
 
 	var h := 0.3            # 키
-	var fat := 1.0          # 포기 굵기(수면 덮는 정도)
-	var col := Color(0.48, 0.85, 0.38)   # 갓 심은 모(연두)
+	var fat := 1.1          # 포기 퍼짐(수면 덮는 정도)
 	if s == GROWING:
-		h = 0.7
-		fat = 3.0
-		col = Color(0.24, 0.58, 0.20)    # 분얼기 진초록
+		h = 0.75
+		fat = 2.4
 	elif s == MATURE:
 		h = 1.0
-		fat = 5.5                        # 빽빽한 카펫
-		col = Color(0.90, 0.76, 0.28)    # 황금빛
+		fat = 3.4           # 빽빽하게(포기 수가 줄어든 만큼 굵게)
 
 	var ix := idx % COLS
 	@warning_ignore("integer_division")
@@ -446,20 +590,34 @@ func _update_rice(idx: int) -> void:
 	var spacing := CELL / float(RICE_ROWS)
 	for b in range(RICE_PER_CELL):
 		var bx := b % RICE_ROWS
-		var bz := b / float(RICE_ROWS)
-		var bzi := int(bz)
+		@warning_ignore("integer_division")
+		var bzi := b / RICE_ROWS
 		# 줄 맞춘 격자 + 아주 작은 지터(손모 흔들림)
 		var jx := (float((idx * 73856093 + b * 19349663) % 100) / 100.0 - 0.5) * 0.06
 		var jz := (float((idx * 83492791 + b * 12582917) % 100) / 100.0 - 0.5) * 0.06
 		var jh := 1.0 + (float((idx * 15485863 + b * 32452843) % 100) / 100.0 - 0.5) * 0.25
 		var px := _cell_x(ix) - CELL * 0.5 + (bx + 0.5) * spacing + jx
 		var pz := _cell_z(iy) - CELL * 0.5 + (bzi + 0.5) * spacing + jz
+		var rot := jx * 105.0   # 포기마다 방향만 다르게
 		var t := Transform3D()
 		t = t.scaled(Vector3(fat, h * jh, fat))
-		t = t.rotated(Vector3.UP, jx * 50.0)
+		t = t.rotated(Vector3.UP, rot)
 		t.origin = Vector3(px, 0.12 + h * jh * 0.5, pz)
-		_rice_mm.set_instance_transform(base + b, t)
-		_rice_mm.set_instance_color(base + b, col)
+		# 현재 단계 MultiMesh에만 그리고 나머지는 숨김
+		for stage: int in _rice_mms:
+			var mm: MultiMesh = _rice_mms[stage]
+			mm.set_instance_transform(base + b, t if stage == s else zero)
+
+		# 이삭: 성숙 시에만 포기 상단에 표시
+		if s == MATURE:
+			var et := Transform3D()
+			var es := 0.85 + jh * 0.2
+			et = et.scaled(Vector3(es, es, es))
+			et = et.rotated(Vector3.UP, rot + 0.7)
+			et.origin = Vector3(px, 0.12 + h * jh * 0.88, pz)
+			_ear_mm.set_instance_transform(base + b, et)
+		else:
+			_ear_mm.set_instance_transform(base + b, zero)
 
 ## 디버그: 모든 논 칸의 생육 단계를 골고루 채워 시각 확인용으로 만든다.
 func debug_grow() -> void:

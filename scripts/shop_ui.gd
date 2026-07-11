@@ -16,7 +16,7 @@ func _ready() -> void:
 
 func _build() -> void:
 	var screen := get_viewport().get_visible_rect().size
-	var size := Vector2(480, 360)
+	var size := Vector2(480, 440)
 
 	_panel = Panel.new()
 	_panel.size = size
@@ -35,6 +35,7 @@ func _build() -> void:
 
 	_add_button(vb, "농사 노동자 고용  (120원)\n밭을 자동으로 일굽니다", _on_buy_farmer)
 	_add_button(vb, "군사 고용  (150원)\n집결지에서 적에 대비합니다", _on_buy_soldier)
+	_add_button(vb, "새참 돌리기  (25원)\n막걸리·국수 새참 — 일꾼들이 45초간 빨라집니다", _on_saecham)
 
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, 6)
@@ -85,6 +86,11 @@ func _on_buy_farmer() -> void:
 func _on_buy_soldier() -> void:
 	if wm != null:
 		wm.hire_soldier()
+	_refresh()
+
+func _on_saecham() -> void:
+	if wm != null:
+		wm.serve_saecham()
 	_refresh()
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -15,26 +15,153 @@ var terrain   # terrain.gd — height_at(x, z)
 func _ready() -> void:
 	_build_houses()
 	_build_power_lines()
+	_build_roads()
+	_build_greenhouses()
+	_build_big_tree()
 	_scatter_nature()
 	_scatter_grass()
+
+# --- 농로 (콘크리트 포장길: 마을~고용소) ---
+func _build_roads() -> void:
+	var conc := StandardMaterial3D.new()
+	conc.albedo_color = Color(0.52, 0.51, 0.48)
+	conc.roughness = 0.95
+	# 남북 간선(농지 서쪽 가장자리)
+	_road(Vector3(-32.8, 0.05, -5.0), Vector3(2.6, 0.08, 88.0), conc)
+	# 고용소 방향 지선
+	_road(Vector3(-21.0, 0.05, 33.0), Vector3(22.0, 0.08, 2.4), conc)
+	# 마을 안길
+	_road(Vector3(-6.0, 0.05, -38.0), Vector3(30.0, 0.08, 2.4), conc)
+
+func _road(pos: Vector3, size: Vector3, mat: Material) -> void:
+	var m := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	m.mesh = bm
+	m.position = pos
+	m.material_override = mat
+	add_child(m)
+
+# --- 비닐하우스 + 모판 (한국 농촌 시그니처) ---
+func _build_greenhouses() -> void:
+	for s in [[Vector3(27, 0, -40), 0.06], [Vector3(33.5, 0, -46), 0.1]]:
+		var gh := Visuals.load_glb("res://assets/models/greenhouse.glb")
+		if gh == null:
+			continue
+		gh.position = s[0]
+		gh.rotation.y = PI + s[1]
+		var body := StaticBody3D.new()
+		var col := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(4.6, 2.2, 9.0)
+		col.shape = shape
+		col.position = Vector3(0, 1.1, 0)
+		body.add_child(col)
+		gh.add_child(body)
+		add_child(gh)
+
+	# 모판 더미 — 연못 남쪽(물길 시작점 근처) 논둑가
+	for s in [[Vector3(2.6, 0, -15.4), 0.4], [Vector3(4.3, 0, -15.9), -0.7], [Vector3(-3.4, 0, -15.2), 1.2]]:
+		var tray := Visuals.load_glb("res://assets/models/seedtray.glb")
+		if tray == null:
+			continue
+		tray.position = s[0]
+		tray.rotation.y = s[1]
+		add_child(tray)
+
+# --- 정자나무 (마을 큰 나무) ---
+func _build_big_tree() -> void:
+	var root := Node3D.new()
+	root.position = Vector3(-12, 0, -19)
+	var trunk := MeshInstance3D.new()
+	var tm := CylinderMesh.new()
+	tm.top_radius = 0.42
+	tm.bottom_radius = 0.62
+	tm.height = 4.6
+	trunk.mesh = tm
+	trunk.position = Vector3(0, 2.3, 0)
+	trunk.material_override = Visuals.bark_mat()
+	root.add_child(trunk)
+	var canopy := [
+		[Vector3(0, 5.6, 0), 3.6, Color(0.20, 0.38, 0.15)],
+		[Vector3(-2.0, 4.8, 1.2), 2.6, Color(0.24, 0.43, 0.17)],
+		[Vector3(1.9, 5.0, -1.0), 2.7, Color(0.26, 0.45, 0.19)],
+		[Vector3(0.6, 6.8, 0.8), 2.2, Color(0.29, 0.48, 0.21)],
+	]
+	for c in canopy:
+		var s := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = c[1]
+		sm.height = c[1] * 1.6
+		s.mesh = sm
+		s.position = c[0]
+		var lm := StandardMaterial3D.new()
+		lm.albedo_color = c[2]
+		lm.roughness = 1.0
+		s.material_override = lm
+		root.add_child(s)
+	# 나무 밑동 평상(마을 쉼터)
+	var bench := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(2.6, 0.35, 2.0)
+	bench.mesh = bm
+	bench.position = Vector3(2.6, 0.18, 1.4)
+	bench.material_override = Visuals.wood_mat()
+	root.add_child(bench)
+	add_child(root)
 
 func _h(x: float, z: float) -> float:
 	return terrain.height_at(x, z) if terrain != null else 0.0
 
 # --- 집 ---
 func _build_houses() -> void:
-	# 연못(월드 약 (0, -24)) 북쪽·서쪽으로 옹기종기
+	# 연못(월드 약 (0, -24)) 북쪽·서쪽으로 옹기종기 — 기와집 2채 + 초가집 2채
 	var spots := [
-		[Vector3(-14, 0, -42), 0.35],
-		[Vector3(0, 0, -46), 0.0],
-		[Vector3(13, 0, -43), -0.4],
-		[Vector3(-26, 0, -33), 0.9],
+		[Vector3(-14, 0, -42), 0.35, true],
+		[Vector3(0, 0, -46), 0.0, false],
+		[Vector3(13, 0, -43), -0.4, true],
+		[Vector3(-26, 0, -33), 0.9, false],
 	]
 	for s in spots:
-		var h := _house()
+		var h: Node3D
+		if s[2]:
+			h = Visuals.load_glb("res://assets/models/choga.glb")
+			if h == null:
+				h = _house()
+			else:
+				h.rotation.y = PI   # Blender 전방 보정
+				var body := StaticBody3D.new()
+				var col := CollisionShape3D.new()
+				var shape := BoxShape3D.new()
+				shape.size = Vector3(4.0, 2.2, 3.1)
+				col.shape = shape
+				col.position = Vector3(0, 1.2, 0)
+				body.add_child(col)
+				h.add_child(body)
+		else:
+			h = _house()
 		h.position = s[0]
-		h.rotation.y = s[1]
+		h.rotation.y += s[1]
 		add_child(h)
+
+	_build_village_guardians()
+
+## 마을 입구 수호: 장승 한 쌍(천하대장군·지하여장군) + 솟대.
+## 마을과 경작지 사이 길목에 세운다.
+func _build_village_guardians() -> void:
+	var spots := [
+		["res://assets/models/jangseung.glb", Vector3(-2.6, 0, -13.0), 0.0, 1.0],
+		["res://assets/models/jangseung.glb", Vector3(2.6, 0, -13.0), 0.15, 0.88],  # 지하여장군은 조금 작게
+		["res://assets/models/sotdae.glb", Vector3(5.4, 0, -14.2), 0.6, 1.0],
+	]
+	for s in spots:
+		var m := Visuals.load_glb(s[0])
+		if m == null:
+			continue
+		m.position = s[1]
+		m.rotation.y = PI + s[2]   # 남쪽(경작지/방문자 방향)을 바라보게
+		m.scale = Vector3.ONE * s[3]
+		add_child(m)
 
 ## 시골집 한 채: 회벽 + 기와지붕 + 문/창. (공용 PBR 재질)
 func _house() -> Node3D:
@@ -176,6 +303,25 @@ func _scatter_nature() -> void:
 		else:
 			oaks.append(item)
 
+	# 마을 뒷산 숲(배산임수) — 능선에 빽빽하게
+	var ridge_trees := 0
+	attempts = 0
+	while ridge_trees < 180 and attempts < 3000:
+		attempts += 1
+		var x := rng.randf_range(-190.0, 190.0)
+		var z := rng.randf_range(-175.0, -62.0)
+		if _blocked(x, z):
+			continue
+		var y := _h(x, z)
+		if y < 2.0:
+			continue   # 능선 위쪽에만(평지 제외)
+		ridge_trees += 1
+		var item := [Vector3(x, y, z), rng.randf() * TAU, rng.randf_range(0.9, 1.6)]
+		if rng.randf() < 0.7:
+			pines.append(item)
+		else:
+			oaks.append(item)
+
 	# 줄기(공용 나무껍질 텍스처)
 	var trunk := CylinderMesh.new()
 	trunk.top_radius = 0.16
@@ -249,7 +395,7 @@ func _scatter_grass() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 977
 
-	var items: Array = []   # [Transform3D 기본, 색]
+	var items: Array = []   # [위치, 회전, 크기]
 	var attempts := 0
 	while items.size() < GRASS_COUNT and attempts < GRASS_COUNT * 3:
 		attempts += 1
@@ -257,18 +403,14 @@ func _scatter_grass() -> void:
 		var z := rng.randf_range(-300.0, 140.0)
 		if _blocked(x, z):
 			continue
-		var s := rng.randf_range(0.7, 1.4)
-		var rot := rng.randf() * TAU
-		var g := rng.randf_range(0.85, 1.15)
-		var col := Color(0.28 * g, 0.44 * g, 0.18 * g)
-		items.append([Vector3(x, _h(x, z), z), rot, s, col])
+		items.append([Vector3(x, _h(x, z), z), rng.randf() * TAU, rng.randf_range(0.7, 1.4)])
 
 	var quad := QuadMesh.new()
 	quad.size = Vector2(0.5, 0.8)
+	var tones := [Color(0.26, 0.42, 0.16), Color(0.31, 0.47, 0.20)]   # 두 겹 두 톤
 	for layer in range(2):
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.use_colors = true
 		mm.mesh = quad
 		mm.instance_count = items.size()
 		var extra_rot := PI * 0.5 * float(layer)   # 두 겹을 십자로
@@ -278,9 +420,9 @@ func _scatter_grass() -> void:
 			var s: float = items[i][2]
 			var tb := Basis(Vector3.UP, rot + extra_rot).scaled(Vector3(s, s, s))
 			mm.set_instance_transform(i, Transform3D(tb, pos + Vector3(0, 0.32 * s, 0)))
-			mm.set_instance_color(i, items[i][3])
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
-		mmi.material_override = Visuals.sway_mat()
+		mmi.material_override = Visuals.sway_mat(tones[layer])
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED   # 잔디는 GI 제외(성능)
 		add_child(mmi)

@@ -15,6 +15,7 @@ const HudScript := preload("res://scripts/hud.gd")
 const MinimapScript := preload("res://scripts/minimap.gd")
 const VillageScript := preload("res://scripts/village.gd")
 const TerrainScript := preload("res://scripts/terrain.gd")
+const BirdManagerScript := preload("res://scripts/bird_manager.gd")
 const Visuals := preload("res://scripts/visuals.gd")
 
 func _ready() -> void:
@@ -75,6 +76,12 @@ func _ready() -> void:
 	var enemy = EnemyManagerScript.new()
 	enemy.hud = hud
 	add_child(enemy)
+
+	# 참새 떼(플레이어 논의 익은 벼를 노림 — 허수아비로 방어)
+	var birds = BirdManagerScript.new()
+	birds.field = field
+	birds.hud = hud
+	add_child(birds)
 
 	var mm = MinimapScript.new()
 	add_child(mm)
