@@ -8,6 +8,7 @@ const FarmFieldScript := preload("res://scripts/farm_field.gd")
 const FarmerScript := preload("res://scripts/farmer.gd")
 const TractorScript := preload("res://scripts/tractor.gd")
 const TransplanterScript := preload("res://scripts/transplanter.gd")
+const CombineScript := preload("res://scripts/combine.gd")
 const WorkerManagerScript := preload("res://scripts/worker_manager.gd")
 const EnemyManagerScript := preload("res://scripts/enemy_manager.gd")
 const ShopScript := preload("res://scripts/shop.gd")
@@ -17,7 +18,12 @@ const MinimapScript := preload("res://scripts/minimap.gd")
 const VillageScript := preload("res://scripts/village.gd")
 const TerrainScript := preload("res://scripts/terrain.gd")
 const BirdManagerScript := preload("res://scripts/bird_manager.gd")
+const DayCycleScript := preload("res://scripts/day_cycle.gd")
 const Visuals := preload("res://scripts/visuals.gd")
+
+var _env: Environment
+var _sky_mat: ProceduralSkyMaterial
+var _sun: DirectionalLight3D
 
 func _ready() -> void:
 	_setup_environment()
@@ -50,16 +56,23 @@ func _ready() -> void:
 	transplanter.field = field
 	add_child(transplanter)
 
+	var combine = CombineScript.new()
+	combine.position = Vector3(15.5, 1.5, 30.0)  # 이앙기 옆에 주차
+	combine.field = field
+	add_child(combine)
+
 	farmer.tractor = tractor
-	farmer.vehicles = [tractor, transplanter]
+	farmer.vehicles = [tractor, transplanter, combine]
 	tractor.farmer = farmer
 	transplanter.farmer = farmer
+	combine.farmer = farmer
 
 	var hud = HudScript.new()
 	add_child(hud)
 	farmer.hud = hud
 	tractor.hud = hud
 	transplanter.hud = hud
+	combine.hud = hud
 
 	var wm = WorkerManagerScript.new()
 	wm.field = field
@@ -95,13 +108,23 @@ func _ready() -> void:
 	var mm = MinimapScript.new()
 	add_child(mm)
 
+	# 하루 사이클(새벽~밤)
+	var dc = DayCycleScript.new()
+	dc.sun = _sun
+	dc.env = _env
+	dc.sky = _sky_mat
+	dc.hud = hud
+	add_child(dc)
+
 func _setup_environment() -> void:
 	var we := WorldEnvironment.new()
 	var env := Environment.new()
+	_env = env
 	env.background_mode = Environment.BG_SKY
 
 	var sky := Sky.new()
 	var sm := ProceduralSkyMaterial.new()
+	_sky_mat = sm
 	sm.sky_top_color = Color(0.32, 0.55, 0.83)
 	sm.sky_horizon_color = Color(0.78, 0.86, 0.90)
 	sm.ground_horizon_color = Color(0.72, 0.78, 0.76)
@@ -147,6 +170,7 @@ func _setup_environment() -> void:
 
 func _setup_light() -> void:
 	var sun := DirectionalLight3D.new()
+	_sun = sun
 	sun.rotation = Vector3(deg_to_rad(-48), deg_to_rad(-38), 0)
 	sun.light_energy = 1.3
 	sun.light_color = Color(1.0, 0.96, 0.87)   # 오후 햇살

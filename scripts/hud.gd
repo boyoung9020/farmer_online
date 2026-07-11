@@ -9,6 +9,7 @@ var _workers_label: Label
 var _enemies_label: Label
 var _msg_label: Label
 var _help_label: Label
+var _time_label: Label
 var _msg_timer := 0.0
 var _font: FontFile
 
@@ -20,6 +21,7 @@ func _ready() -> void:
 	_workers_label = _make_label(Vector2(20, 90), 22)
 	_enemies_label = _make_label(Vector2(20, 122), 22)
 	_msg_label = _make_label(Vector2(20, 158), 20)
+	_time_label = _make_label(Vector2(20, 190), 18)
 	_help_label = _make_label(Vector2(20, 690), 16)
 	_help_label.text = "WASD: 이동   휠: 줌   우클릭: 회전   C: 물길   B: 논   R: 허수아비   F: 탈것(트랙터/이앙기)   E: 고용소(새참)   1~4: 작업모드   M: 지도"
 
@@ -37,6 +39,9 @@ func _process(delta: float) -> void:
 
 func set_mode(mode_name: String) -> void:
 	_mode_label.text = "상태: %s" % mode_name
+
+func set_time(t: String) -> void:
+	_time_label.text = "🕐 %s" % t
 
 func set_workers(farmers: int, soldiers: int) -> void:
 	_workers_label.text = "아군  농사 %d / 군사 %d" % [farmers, soldiers]

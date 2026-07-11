@@ -1,18 +1,23 @@
 extends CharacterBody3D
 ## 승용 이앙기 — 심기 전용 탈것. 경운된(써레질된) 논 위를 지나가면 모를 심는다.
-## F로 탑승/하차. 트랙터보다 느리지만 4조식으로 심기가 빠르다.
+## F로 탑승/하차. 콤바인(combine.gd)이 이 스크립트를 상속해 수확기로 쓴다.
 
 const Visuals := preload("res://scripts/visuals.gd")
 
-const MAX_SPEED := 7.5
 const ACCEL := 10.0
 const TURN_SPEED := 1.6
 const GRAVITY := 22.0
 const MOUSE_SENS := 0.003
 const ZOOM_MIN := 10.0
 const ZOOM_MAX := 45.0
-const WORK_WIDTH := 4.0        # 4조식
-const MODEL_PATH := "res://assets/models/transplanter.glb"
+
+# 파생 탈것이 _init에서 바꾸는 값들
+var max_speed := 7.5
+var work_width := 4.0          # 4조식
+var work_mode := 2             # FarmField.MODE_PLANT
+var work_offset := 1.3         # 작업 지점(+뒤/-앞)
+var mode_label := "이앙기 — 써레질된 논 위로 달리면 모를 심습니다"
+var model_path := "res://assets/models/transplanter.glb"
 
 var hud
 var farmer
@@ -33,7 +38,7 @@ func _ready() -> void:
 	col.position.y = 0.8
 	add_child(col)
 
-	var model := Visuals.load_glb(MODEL_PATH)
+	var model := Visuals.load_glb(model_path)
 	if model != null:
 		model.rotation.y = PI   # Blender(-Y 전방) → Godot(-Z 전방) 보정
 		add_child(model)
@@ -63,7 +68,7 @@ func _set_active(on: bool) -> void:
 		_camera.current = true
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		if hud != null:
-			hud.set_mode("이앙기 — 써레질된 논 위로 달리면 모를 심습니다")
+			hud.set_mode(mode_label)
 	else:
 		remove_from_group("player")
 		_speed = 0.0
@@ -114,7 +119,7 @@ func _physics_process(delta: float) -> void:
 	if abs(_speed) > 0.3:
 		rotation.y += steer * TURN_SPEED * delta * signf(_speed)
 	if throttle != 0.0:
-		_speed = move_toward(_speed, throttle * MAX_SPEED, ACCEL * delta)
+		_speed = move_toward(_speed, throttle * max_speed, ACCEL * delta)
 	else:
 		_speed = move_toward(_speed, 0.0, ACCEL * 1.5 * delta)
 
@@ -137,16 +142,16 @@ func _update_camera() -> void:
 	_camera.global_position = target + Vector3(sin(_yaw) * h, v, cos(_yaw) * h)
 	_camera.look_at(target, Vector3.UP)
 
-## 달리는 동안 뒤쪽 식부장치 폭만큼 심는다(써레질된 논만).
+## 달리는 동안 작업 지점(work_offset) 폭만큼 작업한다(이앙기=심기, 콤바인=수확).
 func _do_plant() -> void:
 	if field == null or absf(_speed) < 0.5:
 		return
 	var back := global_transform.basis.z
 	var right := global_transform.basis.x
-	var center := global_position + back * 1.3
+	var center := global_position + back * work_offset
 	for i in range(4):
-		var t := (float(i) / 3.0 - 0.5) * WORK_WIDTH
-		field.work_at(center + right * t, field.MODE_PLANT)
+		var t := (float(i) / 3.0 - 0.5) * work_width
+		field.work_at(center + right * t, work_mode)
 
 ## 하차 — 농부를 옆에 내려놓고 도보로 전환.
 func _exit() -> void:
