@@ -25,14 +25,66 @@ void fragment() {
 	vec2 uv2 = wpos.xz * 0.105 - vec2(TIME * 0.010, TIME * 0.016);
 	NORMAL_MAP = mix(texture(nmap, uv1).rgb, texture(nmap, uv2).rgb, 0.5);
 	NORMAL_MAP_DEPTH = 0.35 * ripple;
-	// 프레넬: 수직으로 볼수록 바닥색, 눕혀 볼수록 하늘 반사
+	// 프레넬: 수직으로 볼수록 물 본연의 색, 눕혀 볼수록 하늘 반사.
+	// 탑다운에서도 물 종류(저수지=파랑/논=흙탕)가 읽히도록 본색 비중을 높게 유지.
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
-	ALBEDO = mix(deep, shallow, 0.35 + 0.30 * fres);
-	METALLIC = clamp(mirror + fres * 0.55, 0.0, 1.0);
-	ROUGHNESS = 0.04;
-	SPECULAR = 0.7;
+	ALBEDO = mix(deep, shallow, 0.6 + 0.25 * fres);
+	METALLIC = clamp(mirror + fres * 0.5, 0.0, 1.0);
+	ROUGHNESS = 0.05;
+	SPECULAR = 0.6;
 }
 "
+
+# ---------- 들판 풀 셰이더 (디타일링: 두 스케일 블렌드 + 큰 얼룩) ----------
+# 같은 텍스처를 서로 다른 스케일로 겹치고 저주파 노이즈로 섞어 타일 반복을 깬다.
+const GRASS_FIELD_SHADER := "
+shader_type spatial;
+uniform sampler2D albedo_tex: source_color, filter_linear_mipmap_anisotropic;
+uniform sampler2D normal_tex: hint_normal, filter_linear_mipmap_anisotropic;
+uniform sampler2D rough_tex: hint_default_white, filter_linear_mipmap_anisotropic;
+uniform sampler2D patch_noise;
+uniform vec3 tint: source_color = vec3(0.80, 0.95, 0.68);
+varying vec3 wpos;
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+void fragment() {
+	vec2 uv1 = wpos.xz / 5.7;
+	vec2 uv2 = wpos.xz / 13.9 + vec2(0.371, 0.729);
+	float m = texture(patch_noise, wpos.xz / 57.0).r;
+	vec3 alb = mix(texture(albedo_tex, uv1).rgb, texture(albedo_tex, uv2).rgb,
+		clamp(m * 1.6 - 0.3, 0.0, 1.0));
+	// 큰 얼룩(들판의 밝고 어두운 풀 톤)
+	float shade = 0.82 + 0.36 * texture(patch_noise, wpos.xz / 37.0 + vec2(0.5)).r;
+	ALBEDO = alb * tint * shade;
+	NORMAL_MAP = texture(normal_tex, uv1).rgb;
+	NORMAL_MAP_DEPTH = 0.3;
+	ROUGHNESS = texture(rough_tex, uv1).r;
+}
+"
+
+static var _grass_field: ShaderMaterial
+## 지형/받침 지면용 풀 재질 — 타일 반복이 보이지 않는 들판.
+static func grass_field_mat() -> ShaderMaterial:
+	if _grass_field == null:
+		var sh := Shader.new()
+		sh.code = GRASS_FIELD_SHADER
+		_grass_field = ShaderMaterial.new()
+		_grass_field.shader = sh
+		_grass_field.set_shader_parameter("albedo_tex", tex("leafy_grass_diff.jpg"))
+		_grass_field.set_shader_parameter("normal_tex", tex("leafy_grass_nor_gl.jpg"))
+		_grass_field.set_shader_parameter("rough_tex", tex("leafy_grass_rough.jpg"))
+		var n := FastNoiseLite.new()
+		n.noise_type = FastNoiseLite.TYPE_SIMPLEX
+		n.frequency = 0.9
+		n.fractal_octaves = 2
+		var nt := NoiseTexture2D.new()
+		nt.noise = n
+		nt.seamless = true
+		nt.width = 256
+		nt.height = 256
+		_grass_field.set_shader_parameter("patch_noise", nt)
+	return _grass_field
 
 # ---------- 초목 흔들림 셰이더 (잔디/벼 공용, MultiMesh 인스턴스 색 사용) ----------
 const SWAY_SHADER := "
@@ -99,7 +151,9 @@ static func pbr(slug: String, scale: float, tint: Color = Color.WHITE) -> Standa
 
 # ---------- 지형/농지 ----------
 static func grass_mat(_seed_i: int = 0) -> StandardMaterial3D:
-	return pbr("leafy_grass", 3.0, Color(0.80, 0.95, 0.68))   # 살짝 초록 보정
+	var m := pbr("leafy_grass", 6.5, Color(0.80, 0.95, 0.68))   # 살짝 초록 보정
+	m.normal_scale = 0.4   # 노멀맵 타일 이음새가 격자로 보이지 않게
+	return m
 
 static func dirt_mat() -> StandardMaterial3D:
 	return pbr("dirt", 4.0)
@@ -124,6 +178,15 @@ static func wood_mat() -> StandardMaterial3D:
 
 static func stone_mat() -> StandardMaterial3D:
 	return pbr("gray_rocks", 2.0)
+
+static var _conc: StandardMaterial3D
+## 콘크리트(농수로 U형 수로/구조물).
+static func concrete_mat() -> StandardMaterial3D:
+	if _conc == null:
+		_conc = StandardMaterial3D.new()
+		_conc.albedo_color = Color(0.64, 0.63, 0.60)
+		_conc.roughness = 0.9
+	return _conc
 
 static func bark_mat() -> StandardMaterial3D:
 	return pbr("knotted_pine_bark", 1.4)

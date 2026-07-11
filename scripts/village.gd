@@ -6,7 +6,7 @@ extends Node3D
 
 const Visuals := preload("res://scripts/visuals.gd")
 
-const TREE_COUNT := 260
+const TREE_COUNT := 420
 const ROCK_COUNT := 70
 const GRASS_COUNT := 30000
 
@@ -18,20 +18,193 @@ func _ready() -> void:
 	_build_roads()
 	_build_greenhouses()
 	_build_big_tree()
+	_build_korean_trees()
+	_build_quality_trees()
 	_scatter_nature()
 	_scatter_grass()
 
-# --- 농로 (콘크리트 포장길: 마을~고용소) ---
+## GLB 잎 카드 재질 보정: 알파컷 + 양면 렌더 (익스포트 과정에서 유실돼도 안전하게).
+## 런타임 로드 GLB 텍스처는 밉맵이 없어 이동 시 지글거림 → 밉맵 생성.
+func _fix_foliage(n: Node) -> void:
+	if n is MeshInstance3D:
+		var mesh: Mesh = (n as MeshInstance3D).mesh
+		if mesh != null:
+			for i in range(mesh.get_surface_count()):
+				var mat := mesh.surface_get_material(i)
+				if mat is BaseMaterial3D:
+					var bm := mat as BaseMaterial3D
+					bm.albedo_texture = _with_mipmaps(bm.albedo_texture)
+					bm.normal_texture = _with_mipmaps(bm.normal_texture)
+					bm.roughness_texture = _with_mipmaps(bm.roughness_texture)
+					if String(bm.resource_name).begins_with("leafcard"):
+						bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+						bm.alpha_scissor_threshold = 0.4
+						bm.cull_mode = BaseMaterial3D.CULL_DISABLED
+						# MSAA와 함께 잎 가장자리를 부드럽게(알파-투-커버리지)
+						bm.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
+	for c in n.get_children():
+		_fix_foliage(c)
+
+## 밉맵 없는 ImageTexture에 밉맵을 만들어 되돌려준다(중복 호출 안전).
+func _with_mipmaps(tex: Texture2D) -> Texture2D:
+	if tex is ImageTexture:
+		var img: Image = (tex as ImageTexture).get_image()
+		if img != null and not img.has_mipmaps():
+			if img.is_compressed():
+				return tex
+			img.generate_mipmaps()
+			return ImageTexture.create_from_image(img)
+	return tex
+
+# --- 고품질 나무(Blender 제작): 마을·길가 주요 자리만 배치 — 원경 스캐터는 저폴리 유지(LOD) ---
+func _build_quality_trees() -> void:
+	var spots := [
+		["pine", Vector3(-37, 0, -28), 0.7, 1.15],   # 간선도로 서쪽 가로수(전봇대와 도로 사이)
+		["pine", Vector3(-37, 0, -6), 2.3, 1.0],
+		["pine", Vector3(-37, 0, 12), 4.0, 1.25],
+		["pine", Vector3(-8.5, 0, -50.5), 1.1, 1.1],  # 집 뒤 소나무들
+		["pine", Vector3(7.5, 0, -49.5), 3.3, 0.95],
+		["pine", Vector3(21.5, 0, -48), 5.1, 1.2],
+		["pine", Vector3(24.5, 0, -34.2), 0.3, 1.0],  # 마을길 동쪽 끝
+		["real_tree_a", Vector3(-14, 0, 38.5), 1.8, 1.0], # 남쪽 농로변 활엽수(실사)
+		["real_tree_a", Vector3(14, 0, 38), 4.6, 0.9],
+		["real_tree_a", Vector3(-37, 0, 30), 2.9, 1.0],
+	]
+	for s in spots:
+		var t := Visuals.load_glb("res://assets/models/%s.glb" % s[0])
+		if t == null:
+			continue
+		_fix_foliage(t)
+		t.position = s[1]
+		t.rotation.y = s[2]
+		t.scale = Vector3.ONE * (s[3] as float)
+		add_child(t)
+
+# --- 한국적인 나무들: 버드나무(저수지 물가), 감나무(집 마당) ---
+func _build_korean_trees() -> void:
+	# 버드나무 — 저수지 제방 사면에 뿌리내려 물가로 가지가 늘어진다
+	for s in [[Vector3(-57.5, 0.6, -52.5), 0.4], [Vector3(-78.5, 0.6, -42.0), 2.1]]:
+		var w: Node3D = Visuals.load_glb("res://assets/models/willow.glb")
+		if w == null:
+			w = _willow()
+		else:
+			_fix_foliage(w)
+		w.position = s[0]
+		w.rotation.y = s[1]
+		add_child(w)
+	# 감나무 — 집 마당마다 한 그루씩(주황 감이 달린)
+	for s in [[Vector3(-17.5, 0, -39.0), 0.0], [Vector3(3.5, 0, -42.5), 1.2],
+			[Vector3(16.5, 0, -40.0), 2.4], [Vector3(-23.0, 0, -30.0), 0.7]]:
+		var p := _persimmon()
+		p.position = s[0]
+		p.rotation.y = s[1]
+		add_child(p)
+
+## 버드나무: 기울어진 줄기 + 둥근 수관 + 물가로 늘어지는 가지들.
+func _willow() -> Node3D:
+	var root := Node3D.new()
+	var trunk := MeshInstance3D.new()
+	var tm := CylinderMesh.new()
+	tm.top_radius = 0.18
+	tm.bottom_radius = 0.3
+	tm.height = 3.2
+	trunk.mesh = tm
+	trunk.position = Vector3(0, 1.5, 0)
+	trunk.rotation.z = 0.18   # 물 쪽으로 기울어짐
+	trunk.material_override = Visuals.bark_mat()
+	root.add_child(trunk)
+
+	var leaf := StandardMaterial3D.new()
+	leaf.albedo_color = Color(0.36, 0.52, 0.24)   # 버들잎 연둣빛
+	leaf.roughness = 1.0
+	var canopy := MeshInstance3D.new()
+	var cm := SphereMesh.new()
+	cm.radius = 1.9
+	cm.height = 2.6
+	canopy.mesh = cm
+	canopy.position = Vector3(0.5, 3.6, 0)
+	canopy.material_override = leaf
+	root.add_child(canopy)
+
+	# 늘어진 가지(치렁치렁)
+	for i in range(12):
+		var ang := TAU * float(i) / 12.0
+		var strand := MeshInstance3D.new()
+		var sm := BoxMesh.new()
+		var slen := 1.4 + 0.6 * sin(float(i) * 2.9)
+		sm.size = Vector3(0.09, slen, 0.09)
+		strand.mesh = sm
+		strand.position = Vector3(0.5 + cos(ang) * 1.7, 3.4 - slen * 0.5, sin(ang) * 1.7)
+		strand.material_override = leaf
+		root.add_child(strand)
+	return root
+
+## 감나무: 아담한 키 + 둥근 수관 + 주황 감.
+func _persimmon() -> Node3D:
+	var root := Node3D.new()
+	var trunk := MeshInstance3D.new()
+	var tm := CylinderMesh.new()
+	tm.top_radius = 0.12
+	tm.bottom_radius = 0.2
+	tm.height = 1.9
+	trunk.mesh = tm
+	trunk.position = Vector3(0, 0.95, 0)
+	trunk.material_override = Visuals.bark_mat()
+	root.add_child(trunk)
+
+	var leaf := StandardMaterial3D.new()
+	leaf.albedo_color = Color(0.20, 0.36, 0.15)   # 짙은 감잎
+	leaf.roughness = 1.0
+	var canopy := MeshInstance3D.new()
+	var cm := SphereMesh.new()
+	cm.radius = 1.5
+	cm.height = 2.2
+	canopy.mesh = cm
+	canopy.position = Vector3(0, 2.7, 0)
+	canopy.material_override = leaf
+	root.add_child(canopy)
+
+	var fruit := StandardMaterial3D.new()
+	fruit.albedo_color = Color(0.95, 0.5, 0.1)    # 주황 감
+	fruit.roughness = 0.5
+	for i in range(9):
+		var ang := TAU * float(i) / 9.0
+		var f := MeshInstance3D.new()
+		var fm := SphereMesh.new()
+		fm.radius = 0.11
+		fm.height = 0.2
+		f.mesh = fm
+		f.position = Vector3(cos(ang) * 1.25, 2.4 + 0.5 * sin(float(i) * 2.1), sin(ang) * 1.25)
+		f.material_override = fruit
+		root.add_child(f)
+	return root
+
+# --- 농로 (콘크리트 포장길: 마을~농지~고용소, 경운기/트랙터 통행로) ---
 func _build_roads() -> void:
 	var conc := StandardMaterial3D.new()
 	conc.albedo_color = Color(0.52, 0.51, 0.48)
 	conc.roughness = 0.95
-	# 남북 간선(농지 서쪽 가장자리)
-	_road(Vector3(-32.8, 0.05, -5.0), Vector3(2.6, 0.08, 88.0), conc)
-	# 고용소 방향 지선
-	_road(Vector3(-21.0, 0.05, 33.0), Vector3(22.0, 0.08, 2.4), conc)
-	# 마을 안길
-	_road(Vector3(-6.0, 0.05, -38.0), Vector3(30.0, 0.08, 2.4), conc)
+	var edge := StandardMaterial3D.new()
+	edge.albedo_color = Color(0.62, 0.61, 0.57)
+	edge.roughness = 0.95
+
+	# [세로] 남북 간선(농지 서쪽 가장자리) / [가로] 마을 안길, 남쪽 농로(농기계 주차장 앞)
+	_road_with_edges(Vector3(-32.8, 0.05, -3.0), 3.2, 92.0, false, conc, edge)
+	_road_with_edges(Vector3(-7.0, 0.05, -38.0), 2.6, 52.0, true, conc, edge)
+	_road_with_edges(Vector3(-5.0, 0.05, 34.0), 2.8, 56.0, true, conc, edge)
+
+	_build_street_lamps()
+
+## 도로판 + 양쪽 가장자리 라인(콘크리트 슬래브 느낌).
+func _road_with_edges(pos: Vector3, width: float, length: float, horizontal: bool,
+		conc: Material, edge: Material) -> void:
+	var size := Vector3(length, 0.08, width) if horizontal else Vector3(width, 0.08, length)
+	_road(pos, size, conc)
+	var off := width * 0.5 - 0.08
+	for s in [-1.0, 1.0]:
+		var epos := pos + (Vector3(0, 0.012, off * s) if horizontal else Vector3(off * s, 0.012, 0))
+		var esize := Vector3(length, 0.08, 0.14) if horizontal else Vector3(0.14, 0.08, length)
+		_road(epos, esize, edge)
 
 func _road(pos: Vector3, size: Vector3, mat: Material) -> void:
 	var m := MeshInstance3D.new()
@@ -41,6 +214,78 @@ func _road(pos: Vector3, size: Vector3, mat: Material) -> void:
 	m.position = pos
 	m.material_override = mat
 	add_child(m)
+
+# --- 가로등 (도로변, 밤에 점등 — day_cycle이 그룹으로 제어) ---
+func _build_street_lamps() -> void:
+	# 남북 간선 동측
+	for i in range(6):
+		_street_lamp(Vector3(-30.9, 0, -42.0 + i * 16.0), PI * 0.5)
+	# 남쪽 농로 북측
+	for i in range(4):
+		_street_lamp(Vector3(-26.0 + i * 16.0, 0, 32.3), 0.0)
+	# 마을 안길 남측
+	for i in range(3):
+		_street_lamp(Vector3(-26.0 + i * 16.0, 0, -36.3), PI)
+
+func _street_lamp(pos: Vector3, rot: float) -> void:
+	var root := Node3D.new()
+	root.position = pos
+	root.rotation.y = rot
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.22, 0.23, 0.25)
+	dark.metallic = 0.5
+	dark.roughness = 0.5
+
+	var pole := MeshInstance3D.new()
+	var pm := CylinderMesh.new()
+	pm.top_radius = 0.055
+	pm.bottom_radius = 0.08
+	pm.height = 4.6
+	pole.mesh = pm
+	pole.position = Vector3(0, 2.3, 0)
+	pole.material_override = dark
+	root.add_child(pole)
+
+	var arm := MeshInstance3D.new()
+	var am := BoxMesh.new()
+	am.size = Vector3(0.07, 0.07, 1.2)
+	arm.mesh = am
+	arm.position = Vector3(0, 4.55, -0.55)
+	arm.material_override = dark
+	root.add_child(arm)
+
+	var head := MeshInstance3D.new()
+	var hm := BoxMesh.new()
+	hm.size = Vector3(0.24, 0.12, 0.55)
+	head.mesh = hm
+	head.position = Vector3(0, 4.5, -1.1)
+	head.material_override = dark
+	root.add_child(head)
+
+	var glass := MeshInstance3D.new()
+	var gm := BoxMesh.new()
+	gm.size = Vector3(0.18, 0.05, 0.45)
+	glass.mesh = gm
+	glass.position = Vector3(0, 4.43, -1.1)
+	var gmat := StandardMaterial3D.new()
+	gmat.albedo_color = Color(1.0, 0.9, 0.6)
+	gmat.emission_enabled = true
+	gmat.emission = Color(1.0, 0.85, 0.5)
+	gmat.emission_energy_multiplier = 0.4
+	glass.material_override = gmat
+	root.add_child(glass)
+
+	var light := OmniLight3D.new()
+	light.position = Vector3(0, 4.2, -1.1)
+	light.light_color = Color(1.0, 0.85, 0.55)
+	light.omni_range = 14.0
+	light.light_energy = 0.0   # 밤에 day_cycle이 켠다
+	root.add_child(light)
+
+	root.add_to_group("street_lamps")
+	root.set_meta("light", light)
+	root.set_meta("glass", gmat)
+	add_child(root)
 
 # --- 비닐하우스 + 모판 (한국 농촌 시그니처) ---
 func _build_greenhouses() -> void:
@@ -60,8 +305,8 @@ func _build_greenhouses() -> void:
 		gh.add_child(body)
 		add_child(gh)
 
-	# 모판 더미 — 연못 남쪽(물길 시작점 근처) 논둑가
-	for s in [[Vector3(2.6, 0, -15.4), 0.4], [Vector3(4.3, 0, -15.9), -0.7], [Vector3(-3.4, 0, -15.2), 1.2]]:
+	# 모판 더미 — 비닐하우스 앞마당(육묘장)
+	for s in [[Vector3(29.6, 0, -42.6), 0.4], [Vector3(31.0, 0, -43.4), -0.7], [Vector3(28.3, 0, -43.1), 1.2]]:
 		var tray := Visuals.load_glb("res://assets/models/seedtray.glb")
 		if tray == null:
 			continue
@@ -72,34 +317,16 @@ func _build_greenhouses() -> void:
 # --- 정자나무 (마을 큰 나무) ---
 func _build_big_tree() -> void:
 	var root := Node3D.new()
-	root.position = Vector3(-12, 0, -19)
-	var trunk := MeshInstance3D.new()
-	var tm := CylinderMesh.new()
-	tm.top_radius = 0.42
-	tm.bottom_radius = 0.62
-	tm.height = 4.6
-	trunk.mesh = tm
-	trunk.position = Vector3(0, 2.3, 0)
-	trunk.material_override = Visuals.bark_mat()
-	root.add_child(trunk)
-	var canopy := [
-		[Vector3(0, 5.6, 0), 3.6, Color(0.20, 0.38, 0.15)],
-		[Vector3(-2.0, 4.8, 1.2), 2.6, Color(0.24, 0.43, 0.17)],
-		[Vector3(1.9, 5.0, -1.0), 2.7, Color(0.26, 0.45, 0.19)],
-		[Vector3(0.6, 6.8, 0.8), 2.2, Color(0.29, 0.48, 0.21)],
-	]
-	for c in canopy:
-		var s := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		sm.radius = c[1]
-		sm.height = c[1] * 1.6
-		s.mesh = sm
-		s.position = c[0]
-		var lm := StandardMaterial3D.new()
-		lm.albedo_color = c[2]
-		lm.roughness = 1.0
-		s.material_override = lm
-		root.add_child(s)
+	root.position = Vector3(-20, 0, -34.5)   # 마을 서쪽(집 지붕·저수지에 안 겹치게)
+	# 마을 정자나무 — 실사 포토스캔 나무(Poly Haven island_tree_02), 폴백은 제작 느티나무
+	var tree := Visuals.load_glb("res://assets/models/real_tree_a.glb")
+	if tree == null:
+		tree = Visuals.load_glb("res://assets/models/zelkova.glb")
+		if tree != null:
+			tree.scale = Vector3(1.3, 1.3, 1.3)
+	if tree != null:
+		_fix_foliage(tree)
+		root.add_child(tree)
 	# 나무 밑동 평상(마을 쉼터)
 	var bench := MeshInstance3D.new()
 	var bm := BoxMesh.new()
@@ -149,10 +376,11 @@ func _build_houses() -> void:
 ## 마을 입구 수호: 장승 한 쌍(천하대장군·지하여장군) + 솟대.
 ## 마을과 경작지 사이 길목에 세운다.
 func _build_village_guardians() -> void:
+	# 간선도로에서 마을길로 들어오는 길목 양옆(저수지 제방과 겹치지 않게)
 	var spots := [
-		["res://assets/models/jangseung.glb", Vector3(-2.6, 0, -13.0), 0.0, 1.0],
-		["res://assets/models/jangseung.glb", Vector3(2.6, 0, -13.0), 0.15, 0.88],  # 지하여장군은 조금 작게
-		["res://assets/models/sotdae.glb", Vector3(5.4, 0, -14.2), 0.6, 1.0],
+		["res://assets/models/jangseung.glb", Vector3(-29.5, 0, -36.3), -1.45, 1.0],
+		["res://assets/models/jangseung.glb", Vector3(-29.5, 0, -39.7), -1.7, 0.88],  # 지하여장군은 조금 작게
+		["res://assets/models/sotdae.glb", Vector3(-28.0, 0, -35.2), 0.6, 1.0],
 	]
 	for s in spots:
 		var m := Visuals.load_glb(s[0])
@@ -267,11 +495,13 @@ func _wire(p1: Vector3, p2: Vector3, mat: Material) -> void:
 	var d := p2 - p1
 	var w := MeshInstance3D.new()
 	var bm := BoxMesh.new()
-	bm.size = Vector3(0.035, 0.035, d.length())
+	bm.size = Vector3(0.05, 0.05, d.length())
 	w.mesh = bm
 	w.position = mid
 	w.basis = Basis.looking_at(d.normalized(), Vector3.UP)
 	w.material_override = mat
+	# 가는 전선의 그림자는 섀도맵 해상도 아래라 지글거림만 만든다
+	w.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(w)
 
 # --- 나무/바위 산포 ---
@@ -279,6 +509,8 @@ func _wire(p1: Vector3, p2: Vector3, mat: Material) -> void:
 func _blocked(x: float, z: float) -> bool:
 	if x > -48 and x < 48 and z > -58 and z < 48:
 		return true   # 플레이어 마을 + 농지 + 고용소
+	if x > -92 and x < -44 and z > -64 and z < -28:
+		return true   # 마을 서쪽 저수지 터
 	if x > 10 and x < 110 and z > -590 and z < -462:
 		return true   # 적 진영
 	return false
@@ -306,7 +538,7 @@ func _scatter_nature() -> void:
 	# 마을 뒷산 숲(배산임수) — 능선에 빽빽하게
 	var ridge_trees := 0
 	attempts = 0
-	while ridge_trees < 180 and attempts < 3000:
+	while ridge_trees < 300 and attempts < 5000:
 		attempts += 1
 		var x := rng.randf_range(-190.0, 190.0)
 		var z := rng.randf_range(-175.0, -62.0)

@@ -29,6 +29,9 @@ var _full_visible := false
 # 줌(휠) — 보이는 범위(m), 작을수록 확대
 var _mini_view := VIEW_METERS
 var _full_view := FULL_VIEW_METERS
+# 전체지도 탐색: 드래그 패닝 중심(월드 x,z) + 드래그 상태
+var _full_focus := Vector2(FULL_CENTER.x, FULL_CENTER.z)
+var _dragging := false
 
 func _ready() -> void:
 	var screen := get_viewport().get_visible_rect().size
@@ -107,12 +110,14 @@ func _setup_fullmap(screen: Vector2) -> void:
 	fframe.color = Color(0.05, 0.05, 0.05, 0.95)
 	fframe.position = fo - Vector2(6, 6)
 	fframe.size = Vector2(FULL_SIZE + 12, FULL_SIZE + 12)
+	fframe.mouse_filter = Control.MOUSE_FILTER_IGNORE   # 드래그/휠이 지도 입력으로 가게
 	_full_root.add_child(fframe)
 
 	var ftex := TextureRect.new()
 	ftex.texture = _full_sv.get_texture()
 	ftex.position = fo
 	ftex.size = Vector2(FULL_SIZE, FULL_SIZE)
+	ftex.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_full_root.add_child(ftex)
 
 	_full_center = fo + Vector2(FULL_SIZE, FULL_SIZE) * 0.5
@@ -138,24 +143,45 @@ func _make_marker() -> Polygon2D:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
 		_toggle_fullmap()
-	elif _full_visible and event is InputEventMouseButton and event.pressed:
-		# 휠은 전체지도가 열려 있을 때만 지도 줌(평소엔 게임 카메라 줌)
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_zoom(-1.0)
+		return
+	if not _full_visible:
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		# 휠은 전체지도가 열려 있을 때만 지도 줌(평소엔 게임 카메라 줌) — 커서 위치 기준
+		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
+			_zoom(-1.0, mb.position)
 			get_viewport().set_input_as_handled()
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_zoom(1.0)
+		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
+			_zoom(1.0, mb.position)
 			get_viewport().set_input_as_handled()
+		elif mb.button_index == MOUSE_BUTTON_LEFT:
+			# 좌클릭 드래그로 지도 이동
+			_dragging = mb.pressed
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion and _dragging:
+		var mpp := _full_view / float(FULL_SIZE)   # 지도 1px당 미터
+		_full_focus -= (event as InputEventMouseMotion).relative * mpp
+		_apply_full_cam()
+		get_viewport().set_input_as_handled()
 
-## 전체지도 휠 줌. dir<0 확대, dir>0 축소.
-func _zoom(dir: float) -> void:
+## 전체지도 휠 줌(커서 아래 지점이 고정되도록). dir<0 확대, dir>0 축소.
+func _zoom(dir: float, mouse_pos: Vector2) -> void:
 	var f := 1.18 if dir > 0.0 else 0.85
-	_full_view = clampf(_full_view * f, 300.0, 8000.0)
+	var new_view := clampf(_full_view * f, 200.0, 8000.0)
+	var off := (mouse_pos - _full_center) / float(FULL_SIZE)   # 지도 중심 기준 -0.5..0.5
+	_full_focus += off * (_full_view - new_view)
+	_full_view = new_view
+	_apply_full_cam()
+
+func _apply_full_cam() -> void:
 	_full_cam.size = _full_view
+	_full_cam.position = Vector3(_full_focus.x, 1500, _full_focus.y)
 
 func _toggle_fullmap() -> void:
 	_full_visible = not _full_visible
 	_full_root.visible = _full_visible
+	_dragging = false
 	_full_sv.render_target_update_mode = (
 		SubViewport.UPDATE_ALWAYS if _full_visible else SubViewport.UPDATE_DISABLED
 	)
@@ -171,9 +197,9 @@ func _process(_delta: float) -> void:
 	_cam.position = Vector3(p.x, 200, p.z)
 	_marker.rotation = -_player.rotation.y
 
-	# 전체지도: 카메라는 고정, 마커를 플레이어 위치로 매핑
+	# 전체지도: 드래그로 움직이는 초점 기준으로 마커를 매핑
 	if _full_visible:
-		var px := ((p.x - FULL_CENTER.x) / _full_view) * FULL_SIZE
-		var pz := ((p.z - FULL_CENTER.z) / _full_view) * FULL_SIZE  # 월드 +Z = 화면 아래
+		var px := ((p.x - _full_focus.x) / _full_view) * FULL_SIZE
+		var pz := ((p.z - _full_focus.y) / _full_view) * FULL_SIZE  # 월드 +Z = 화면 아래
 		_full_marker.position = _full_center + Vector2(px, pz)
 		_full_marker.rotation = -_player.rotation.y

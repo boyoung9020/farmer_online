@@ -9,7 +9,7 @@ var env: Environment
 var sky: ProceduralSkyMaterial
 var hud
 
-var _t := DAY_LEN * 0.27   # 아침 무렵부터 시작
+var _t := DAY_LEN * 0.42   # 오전 10시쯤(그림자 짧은 시간대)부터 시작
 
 func _process(delta: float) -> void:
 	_t = fmod(_t + delta, DAY_LEN)
@@ -40,6 +40,12 @@ func _process(delta: float) -> void:
 	sky.sky_horizon_color = hor
 	sky.ground_horizon_color = hor * 0.9
 	env.fog_light_color = hor.lerp(Color(0.80, 0.87, 0.92), day * 0.5)
+
+	# 가로등: 어두워지면 점등
+	var night := clampf(1.0 - day * 1.5, 0.0, 1.0)
+	for lamp in get_tree().get_nodes_in_group("street_lamps"):
+		(lamp.get_meta("light") as OmniLight3D).light_energy = night * 2.4
+		(lamp.get_meta("glass") as StandardMaterial3D).emission_energy_multiplier = 0.4 + night * 3.0
 
 	if hud != null:
 		var hours := ph * 24.0

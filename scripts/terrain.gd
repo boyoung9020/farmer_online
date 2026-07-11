@@ -13,6 +13,7 @@ const AMP := 9.0              # 언덕 최대 높이(m)
 # 평지로 유지할 구역(월드 XZ 사각형): [min_x, max_x, min_z, max_z]
 const FLAT_RECTS := [
 	[-48.0, 48.0, -58.0, 48.0],      # 플레이어 마을 + 농지 + 고용소
+	[-92.0, -44.0, -64.0, -28.0],    # 마을 서쪽 저수지 터
 	[10.0, 110.0, -590.0, -462.0],   # 적 진영(농지+기지)
 ]
 const FLAT_FALLOFF := 70.0    # 평지 경계에서 언덕까지 전환 거리(m)
@@ -81,11 +82,12 @@ func _build_mesh() -> void:
 			st.add_vertex(a); st.add_vertex(b); st.add_vertex(d)
 			st.add_vertex(a); st.add_vertex(d); st.add_vertex(c)
 
+	st.index()              # 정점 공유 → 부드러운 법선(면 단위 격자 음영 방지)
 	st.generate_normals()
 	var mesh := st.commit()
 
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
-	mi.material_override = Visuals.grass_mat()
+	mi.material_override = Visuals.grass_field_mat()   # 디타일링 풀 셰이더
 	add_child(mi)
 	mi.create_trimesh_collision()

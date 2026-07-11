@@ -26,6 +26,8 @@ var _sky_mat: ProceduralSkyMaterial
 var _sun: DirectionalLight3D
 
 func _ready() -> void:
+	# 얇은 지오메트리(전선·잎카드·논둑 모서리)가 이동 중 지글거리지 않도록 MSAA
+	get_viewport().msaa_3d = Viewport.MSAA_4X
 	_setup_environment()
 	_setup_light()
 	_setup_base_ground()
@@ -43,7 +45,7 @@ func _ready() -> void:
 	add_child(village)
 
 	var farmer = FarmerScript.new()
-	farmer.position = Vector3(0, 1.5, 30.0)   # 농지 남쪽에서 도보로 시작
+	farmer.position = Vector3(0, 1.5, 30.0)
 	add_child(farmer)
 
 	var tractor = TractorScript.new()
@@ -187,7 +189,7 @@ func _setup_base_ground() -> void:
 	pm.size = Vector2(14000, 14000)   # 보구곶리 전체(약 6.5km) 덮도록
 	mi.mesh = pm
 	mi.position.y = -0.05
-	mi.material_override = Visuals.grass_mat()   # 언덕 지형과 같은 풀 텍스처
+	mi.material_override = Visuals.grass_field_mat()   # 언덕 지형과 같은 디타일링 풀
 	ground.add_child(mi)
 
 	var col := CollisionShape3D.new()
