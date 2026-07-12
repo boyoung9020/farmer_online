@@ -66,9 +66,10 @@ func _build_quality_trees() -> void:
 		["pine", Vector3(7.5, 0, -49.5), 3.3, 0.95],
 		["pine", Vector3(21.5, 0, -48), 5.1, 1.2],
 		["pine", Vector3(24.5, 0, -34.2), 0.3, 1.0],  # 마을길 동쪽 끝
-		["real_tree_a", Vector3(-14, 0, 38.5), 1.8, 1.0], # 남쪽 농로변 활엽수(실사)
-		["real_tree_a", Vector3(14, 0, 38), 4.6, 0.9],
-		["real_tree_a", Vector3(-37, 0, 30), 2.9, 1.0],
+		# 농로변은 가벼운 잎카드 나무(76만 폴리 실사 나무는 정자나무 1그루 전용)
+		["zelkova", Vector3(-14, 0, 38.5), 1.8, 1.0],
+		["zelkova", Vector3(14, 0, 38), 4.6, 0.9],
+		["pine", Vector3(-37, 0, 30), 2.9, 1.0],
 	]
 	for s in spots:
 		var t := Visuals.load_glb("res://assets/models/%s.glb" % s[0])
@@ -551,6 +552,23 @@ func _scatter_nature() -> void:
 		ridge_trees += 1
 		var item := [Vector3(x, y, z), rng.randf() * TAU, rng.randf_range(0.9, 1.6)]
 		if rng.randf() < 0.7:
+			pines.append(item)
+		else:
+			oaks.append(item)
+
+	# 원경 산맥 사면 숲 — 쇼케이스처럼 산허리를 나무로 덮는다(중턱만, 꼭대기는 암벽)
+	var mtn := 0
+	attempts = 0
+	while mtn < 900 and attempts < 9000:
+		attempts += 1
+		var x := rng.randf_range(-780.0, 780.0)
+		var z := rng.randf_range(-1000.0, 560.0)
+		var y := _h(x, z)
+		if y < 20.0 or y > 90.0:
+			continue
+		mtn += 1
+		var item := [Vector3(x, y, z), rng.randf() * TAU, rng.randf_range(1.6, 2.8)]
+		if rng.randf() < 0.8:
 			pines.append(item)
 		else:
 			oaks.append(item)

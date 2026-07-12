@@ -60,6 +60,14 @@ func height_at(x: float, z: float) -> float:
 	ridge *= 0.7 + 0.6 * (_noise.get_noise_2d(x * 1.7 + 999.0, z * 1.7) * 0.5 + 0.5)
 	h += ridge
 
+	# 원경 산맥: 플레이 구역에서 멀어질수록 융기하는 날카로운 봉우리들.
+	# 급경사는 Terrain3D 오토셰이더가 자동으로 암벽 처리(쇼케이스 룩).
+	var dc := Vector2(lx, lz).length()
+	var mfar := clampf((dc - 420.0) / 260.0, 0.0, 1.0)
+	if mfar > 0.0:
+		var mn := 1.0 - absf(_noise.get_noise_2d(x * 0.7 + 555.0, z * 0.7))
+		h += mfar * mn * mn * 120.0
+
 	return h * edge_f * flat_f
 
 func _build_terrain3d() -> void:
