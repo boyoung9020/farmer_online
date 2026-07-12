@@ -182,27 +182,20 @@ func _persimmon() -> Node3D:
 
 # --- 농로 (콘크리트 포장길: 마을~농지~고용소, 경운기/트랙터 통행로) ---
 func _build_roads() -> void:
-	# 시골 흙길: 바닥은 흙(PBR), 갓길은 풀 — 콘크리트 아님
-	var soil := Visuals.dirt_mat()
-	var edge := Visuals.grass_mat()
+	# 시골 흙길: 경계선 없이, 완전한 갈색 흙(마른 진흙 텍스처 + 갈색 틴트)
+	var soil := Visuals.pbr("brown_mud_02", 3.2, Color(1.0, 0.82, 0.62))
 
 	# [세로] 남북 간선(농지 서쪽 가장자리) / [가로] 마을 안길, 남쪽 농로(농기계 주차장 앞)
-	_road_with_edges(Vector3(-32.8, 0.05, -3.0), 3.2, 92.0, false, soil, edge)
-	_road_with_edges(Vector3(-7.0, 0.05, -38.0), 2.6, 52.0, true, soil, edge)
-	_road_with_edges(Vector3(-5.0, 0.05, 34.0), 2.8, 56.0, true, soil, edge)
+	_dirt_road(Vector3(-32.8, 0.05, -3.0), 3.2, 92.0, false, soil)
+	_dirt_road(Vector3(-7.0, 0.05, -38.0), 2.6, 52.0, true, soil)
+	_dirt_road(Vector3(-5.0, 0.05, 34.0), 2.8, 56.0, true, soil)
 
 	_build_street_lamps()
 
-## 도로판 + 양쪽 가장자리 라인(흙길 + 풀 갓길).
-func _road_with_edges(pos: Vector3, width: float, length: float, horizontal: bool,
-		conc: Material, edge: Material) -> void:
+## 흙길 한 판(가장자리 라인 없음).
+func _dirt_road(pos: Vector3, width: float, length: float, horizontal: bool, soil: Material) -> void:
 	var size := Vector3(length, 0.08, width) if horizontal else Vector3(width, 0.08, length)
-	_road(pos, size, conc)
-	var off := width * 0.5 - 0.08
-	for s in [-1.0, 1.0]:
-		var epos := pos + (Vector3(0, 0.012, off * s) if horizontal else Vector3(off * s, 0.012, 0))
-		var esize := Vector3(length, 0.08, 0.14) if horizontal else Vector3(0.14, 0.08, length)
-		_road(epos, esize, edge)
+	_road(pos, size, soil)
 
 func _road(pos: Vector3, size: Vector3, mat: Material) -> void:
 	var m := MeshInstance3D.new()

@@ -21,8 +21,8 @@ const FLAT_FALLOFF := 70.0    # 평지 경계에서 언덕까지 전환 거리(m
 
 # 경작지 침하: 실제 논은 마을·길보다 낮다. 경계 안쪽으로 사면을 만들며 파인다.
 const FARM_RECT := [-30.0, 30.0, -32.0, 32.0]   # 농지 그리드(월드 XZ)
-const FARM_DEPTH := 0.7                          # 침하 깊이(m)
-const FARM_BLEND := 4.0                          # 가장자리 사면 폭(m, 안쪽 방향)
+const FARM_DEPTH := 1.6                          # 침하 깊이(m) — 마을·길에서 뚜렷하게 내려다보인다
+const FARM_BLEND := 6.0                          # 가장자리 사면 폭(m, 안쪽 방향)
 
 const MAP_HALF := 1024.0      # Terrain3D 커버 반경(m) — 2x2 리전(리전 1024)
 const BAKE_RES := 512         # 하이트맵 계산 해상도(4m 간격) → 2048로 업샘플

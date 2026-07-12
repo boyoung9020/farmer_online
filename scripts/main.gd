@@ -38,7 +38,7 @@ func _ready() -> void:
 	add_child(terrain)
 
 	var field = FarmFieldScript.new()
-	field.position.y = -0.7   # 경작지 침하(terrain.gd FARM_DEPTH와 동일) — 논은 마을보다 낮다
+	field.position.y = -1.6   # 경작지 침하(terrain.gd FARM_DEPTH와 동일) — 논은 마을보다 낮다
 	add_child(field)
 
 	var village = VillageScript.new()
@@ -190,7 +190,7 @@ func _setup_base_ground() -> void:
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(14000, 14000)   # 보구곶리 전체(약 6.5km) 덮도록
 	mi.mesh = pm
-	mi.position.y = -0.95   # 침하 경작지(-0.7)보다 아래 — Terrain3D 지형이 위를 덮는다
+	mi.position.y = -1.85   # 침하 경작지(-1.6)보다 아래 — Terrain3D 지형이 위를 덮는다
 	mi.material_override = Visuals.grass_field_mat()   # 언덕 지형과 같은 디타일링 풀
 	ground.add_child(mi)
 
@@ -198,7 +198,7 @@ func _setup_base_ground() -> void:
 	var box := BoxShape3D.new()
 	box.size = Vector3(14000, 0.2, 14000)
 	col.shape = box
-	col.position.y = -1.05
+	col.position.y = -1.95
 	ground.add_child(col)
 	add_child(ground)
 
