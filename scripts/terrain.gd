@@ -87,6 +87,10 @@ func _build_terrain3d() -> void:
 	terrain.material.set_shader_param("macro_variation1", Color(0.92, 0.97, 0.86))
 	terrain.material.set_shader_param("macro_variation2", Color(0.80, 0.88, 0.72))
 
+	# 풀포기 카드 메시(인스턴서용) — 지면 풀 텍스처 톤에 맞춘 두 가지 색
+	terrain.assets.set_mesh_asset(0, _grass_card("풀포기A", Color(0.44, 0.56, 0.27)))
+	terrain.assets.set_mesh_asset(1, _grass_card("풀포기B", Color(0.52, 0.63, 0.31)))
+
 	# 하이트맵: height_at()을 4m 간격으로 계산 → 2048²로 업샘플 → 임포트
 	var img := Image.create_empty(BAKE_RES, BAKE_RES, false, Image.FORMAT_RF)
 	var step := MAP_HALF * 2.0 / float(BAKE_RES)
@@ -100,6 +104,23 @@ func _build_terrain3d() -> void:
 	terrain.data.import_images([img, null, null], Vector3(-MAP_HALF, 0, -MAP_HALF), 0.0, 1.0)
 	print("[Terrain3D] 텍스처 %d개: " % terrain.assets.get_texture_count(),
 		terrain.assets.texture_list.map(func(t): return t.name))
+
+## 실제 렌더 지형(하이트맵 임포트 후) 표면 높이 — 나무/풀/바위 배치 스냅용.
+## height_at()은 4m 굽기+업샘플 전의 수식값이라 능선 급경사에서 수십 cm 어긋날 수 있다.
+func surface_height(x: float, z: float) -> float:
+	if terrain != null:
+		var h: float = terrain.data.get_height(Vector3(x, 0.0, z))
+		if not is_nan(h):
+			return h
+	return height_at(x, z)
+
+## 인스턴서용 풀포기 카드 메시 에셋.
+func _grass_card(card_name: String, col: Color):
+	var ma := Terrain3DMeshAsset.new()
+	ma.name = card_name
+	ma.generated_type = Terrain3DMeshAsset.TYPE_TEXTURE_CARD
+	ma.material_override.albedo_color = col
+	return ma
 
 ## PBR jpg 3장(diff/nor_gl/rough)을 Terrain3D 텍스처 에셋으로.
 ## 알베도 A=높이(상수), 노멀 A=러프니스(상수 1) — 우리 재질은 전부 거친 표면이라 충분.

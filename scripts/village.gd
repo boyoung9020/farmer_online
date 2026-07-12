@@ -338,7 +338,8 @@ func _build_big_tree() -> void:
 	add_child(root)
 
 func _h(x: float, z: float) -> float:
-	return terrain.height_at(x, z) if terrain != null else 0.0
+	# 실제 렌더 지형 표면에 스냅(하이트맵 업샘플과 수식값의 오차 방지)
+	return terrain.surface_height(x, z) if terrain != null else 0.0
 
 # --- 집 ---
 func _build_houses() -> void:
@@ -566,22 +567,22 @@ func _scatter_nature() -> void:
 	cone1.top_radius = 0.0
 	cone1.bottom_radius = 1.6
 	cone1.height = 2.6
-	_scatter_mm(cone1, _leaf_mat(Color(0.15, 0.32, 0.16)), pines, 3.0)
+	_scatter_mm(cone1, _leaf_mat(Color(0.24, 0.40, 0.20)), pines, 3.0)
 	var cone2 := CylinderMesh.new()
 	cone2.top_radius = 0.0
 	cone2.bottom_radius = 1.1
 	cone2.height = 2.0
-	_scatter_mm(cone2, _leaf_mat(Color(0.19, 0.38, 0.18)), pines, 4.4)
+	_scatter_mm(cone2, _leaf_mat(Color(0.29, 0.46, 0.23)), pines, 4.4)
 
 	# 활엽수: 둥근 수관 2덩이
 	var ball1 := SphereMesh.new()
 	ball1.radius = 1.5
 	ball1.height = 2.6
-	_scatter_mm(ball1, _leaf_mat(Color(0.22, 0.42, 0.17)), oaks, 3.2)
+	_scatter_mm(ball1, _leaf_mat(Color(0.33, 0.49, 0.22)), oaks, 3.2)
 	var ball2 := SphereMesh.new()
 	ball2.radius = 1.0
 	ball2.height = 1.8
-	_scatter_mm(ball2, _leaf_mat(Color(0.27, 0.48, 0.20)), oaks, 4.2)
+	_scatter_mm(ball2, _leaf_mat(Color(0.39, 0.55, 0.26)), oaks, 4.2)
 
 	# 바위(돌 텍스처)
 	var rocks: Array = []
@@ -622,39 +623,31 @@ func _scatter_mm(mesh: Mesh, mat: Material, items: Array, y_off: float) -> void:
 	add_child(mmi)
 
 # --- 잔디 ---
-## 플레이어 활동 반경의 들판에 잔디 수만 그루. 십자 배치 2겹 + 바람 셰이더.
+## Terrain3D 인스턴서로 풀포기 카드를 심는다(지형 시스템이 청크·컬링 관리).
+## 색은 terrain.gd의 풀포기 메시 에셋(지면 텍스처 톤과 매칭) 2종을 번갈아 쓴다.
 func _scatter_grass() -> void:
+	if terrain == null or terrain.terrain == null:
+		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 977
 
-	var items: Array = []   # [위치, 회전, 크기]
+	var xforms_a: Array[Transform3D] = []
+	var xforms_b: Array[Transform3D] = []
+	var made := 0
 	var attempts := 0
-	while items.size() < GRASS_COUNT and attempts < GRASS_COUNT * 3:
+	while made < GRASS_COUNT and attempts < GRASS_COUNT * 3:
 		attempts += 1
 		var x := rng.randf_range(-240.0, 240.0)
 		var z := rng.randf_range(-300.0, 140.0)
 		if _blocked(x, z):
 			continue
-		items.append([Vector3(x, _h(x, z), z), rng.randf() * TAU, rng.randf_range(0.7, 1.4)])
-
-	var quad := QuadMesh.new()
-	quad.size = Vector2(0.5, 0.8)
-	var tones := [Color(0.26, 0.42, 0.16), Color(0.31, 0.47, 0.20)]   # 두 겹 두 톤
-	for layer in range(2):
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = quad
-		mm.instance_count = items.size()
-		var extra_rot := PI * 0.5 * float(layer)   # 두 겹을 십자로
-		for i in range(items.size()):
-			var pos: Vector3 = items[i][0]
-			var rot: float = items[i][1]
-			var s: float = items[i][2]
-			var tb := Basis(Vector3.UP, rot + extra_rot).scaled(Vector3(s, s, s))
-			mm.set_instance_transform(i, Transform3D(tb, pos + Vector3(0, 0.32 * s, 0)))
-		var mmi := MultiMeshInstance3D.new()
-		mmi.multimesh = mm
-		mmi.material_override = Visuals.sway_mat(tones[layer])
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mmi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED   # 잔디는 GI 제외(성능)
-		add_child(mmi)
+		made += 1
+		var s := rng.randf_range(0.7, 1.4)
+		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s))
+		var t := Transform3D(b, Vector3(x, terrain.surface_height(x, z), z))
+		if made % 2 == 0:
+			xforms_a.push_back(t)
+		else:
+			xforms_b.push_back(t)
+	terrain.terrain.instancer.add_transforms(0, xforms_a)
+	terrain.terrain.instancer.add_transforms(1, xforms_b)
