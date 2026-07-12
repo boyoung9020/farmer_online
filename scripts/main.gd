@@ -104,10 +104,12 @@ func _ready() -> void:
 	add_child(enemy)
 
 	# 참새 떼(플레이어 논의 익은 벼를 노림 — 허수아비로 방어)
-	var birds = BirdManagerScript.new()
-	birds.field = field
-	birds.hud = hud
-	add_child(birds)
+	# 디자인 검토(DEBUG_START_MATURE) 중엔 끈다 — 벼를 먹어치워 밭이 흐트러진다
+	if not FarmFieldScript.DEBUG_START_MATURE:
+		var birds = BirdManagerScript.new()
+		birds.field = field
+		birds.hud = hud
+		add_child(birds)
 
 	var mm = MinimapScript.new()
 	add_child(mm)

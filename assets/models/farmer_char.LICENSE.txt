@@ -1,0 +1,3 @@
+farmer_char.glb (+ Textures/texture-b.png) — "Blocky Characters 2.0" character-b by Kenney
+출처: https://kenney.nl/assets/blocky-characters
+라이선스: CC0 (https://creativecommons.org/publicdomain/zero/1.0/)

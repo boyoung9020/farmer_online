@@ -1,0 +1,4 @@
+unit_worker.glb (character-c), unit_ally.glb (character-j), unit_enemy.glb (character-q)
++ Textures/texture-{c,j,q}.png — "Blocky Characters 2.0" by Kenney
+출처: https://kenney.nl/assets/blocky-characters
+라이선스: CC0 (https://creativecommons.org/publicdomain/zero/1.0/)

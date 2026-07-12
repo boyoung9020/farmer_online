@@ -127,6 +127,22 @@ func _build_terrain3d() -> void:
 	print("[Terrain3D] 텍스처 %d개: " % terrain.assets.get_texture_count(),
 		terrain.assets.texture_list.map(func(t): return t.name))
 
+	# 지형 충돌: Terrain3D 자체 충돌(동적/전체 모두)이 서쪽 리전에서 빠지는
+	# 문제가 있어 끄고, 시각 지형과 동일한 하이트맵으로 직접 전 맵 정적
+	# HeightMapShape를 만든다 — 보이지 않는 벽/충돌 구멍이 원천적으로 없다.
+	terrain.collision.mode = Terrain3DCollision.DISABLED
+	var hshape := HeightMapShape3D.new()
+	hshape.map_width = img.get_width()
+	hshape.map_depth = img.get_height()
+	hshape.map_data = img.get_data().to_float32_array()   # FORMAT_RF = float32 그대로
+	var hbody := StaticBody3D.new()
+	hbody.name = "TerrainCollision"
+	var hcol := CollisionShape3D.new()
+	hcol.shape = hshape
+	hbody.add_child(hcol)
+	add_child(hbody)
+	print("[Terrain3D] 자체 하이트맵 충돌 생성: %dx%d (1m 격자)" % [img.get_width(), img.get_height()])
+
 ## 실제 렌더 지형(하이트맵 임포트 후) 표면 높이 — 나무/풀/바위 배치 스냅용.
 ## height_at()은 4m 굽기+업샘플 전의 수식값이라 능선 급경사에서 수십 cm 어긋날 수 있다.
 func surface_height(x: float, z: float) -> float:

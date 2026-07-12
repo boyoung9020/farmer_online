@@ -17,7 +17,7 @@ const SCARECROW_COST := 15    # 허수아비 비용
 const SCARECROW_RANGE := 9.0  # 허수아비가 참새를 쫓는 반경(m)
 const SEED_COST := 2          # 셀당 씨앗값
 const HARVEST_VALUE := 10     # 셀당 수확 수익
-const GROW_TIME := 4.0        # 단계당 성장 시간(초)
+const GROW_TIME := 60.0       # 단계당 성장 시간(초) — 심기→성숙 2분(게임 내 반나절)
 
 # 마을 공용 저수지: 농지 구역 완전 밖, 마을 서쪽 평지(셀 좌표 — 음수 = 구역 밖).
 # 물은 인입수로(도수로)가 서쪽 경계 취수구(ENTRY_ROW)로 끌어온다.
@@ -111,6 +111,9 @@ func _ready() -> void:
 	_set_kind(ENTRY_ROW * COLS + 1, KIND_CANAL)
 	print("[FarmField] %dx%d 구역, 서쪽 저수지+인입수로. C: 물길, B: 논 건설." % [COLS, ROWS])
 
+	if DEBUG_START_MATURE:
+		call_deferred("debug_demo_paddies", TILLED)   # 벼 없이 물 댄 논 — 수로/농경지 디자인 확인용
+
 func _cell_x(ix: int) -> float:
 	return _min_x + (ix + 0.5) * CELL
 
@@ -119,36 +122,31 @@ func _cell_z(iy: int) -> float:
 
 ## 필지 분할(BSP): 실제 논처럼 크기·모양이 제각각인 필지 모자이크를 만든다.
 ## 논둑은 필지 경계에만 서고, 필지마다 색조/수위가 미세하게 다르다.
+# 경지정리된 표준 구획 — 침하 농지의 평평한 핵심부에만 필지를 둔다.
+# 가장자리 4셀(8m)은 침하 사면: 논을 만들면 바닥·물이 지형에 파묻히고
+# 벼 끝만 풀밭을 뚫고 나와 보인다. (terrain.gd FARM_BLEND=8m)
+#
+# 물 계통(실제 벼농사 구조):
+#   저수지 → 도수로(취수구) → 간선 용수로(북) → 지선 용수로(필지 사이)
+#   → 물꼬(논둑 튼 자리) → 논 → 물꼬 → 배수로(남)
+const PARCEL_X0 := 4     # 핵심부 서쪽 경계(셀)
+const PARCEL_X1 := 26    # 핵심부 동쪽 경계(exclusive)
+const CANAL_ROW := 4     # 간선 용수로 행 — 핵심부 북쪽 끝
+const BRANCH_COL := 15   # 지선 용수로 열 — 두 필지 사이 세로
+const DRAIN_ROW := 27    # 배수로 행 — 핵심부 남쪽 끝
+# 필지: [x, y, w, h] — 지선/배수로를 비켜 배치. 북쪽 회랑은 용수로(4행)+둑길(5행).
+const PARCEL_LAYOUT := [[4, 6, 11, 21], [16, 6, 10, 21]]
+
+## 필지 분할: 경지정리된 논처럼 반듯하고 큼직한 직사각형 필지.
 func _gen_parcels() -> void:
 	_parcel = PackedInt32Array()
 	_parcel.resize(COLS * ROWS)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 4242
-	var stack: Array = [[0, 0, COLS, ROWS]]
-	var pid := 0
-	while not stack.is_empty():
-		var r: Array = stack.pop_back()
-		var x: int = r[0]
-		var y: int = r[1]
-		var w: int = r[2]
-		var h: int = r[3]
-		var can_w := w >= 6
-		var can_h := h >= 6
-		if (not can_w and not can_h) or (w <= 7 and h <= 7 and rng.randf() < 0.55):
-			for iy in range(y, y + h):
-				for ix in range(x, x + w):
-					_parcel[iy * COLS + ix] = pid
-			_parcel_rects.append([x, y, w, h])
-			pid += 1
-			continue
-		if can_w and (w >= h or not can_h):
-			var cut := rng.randi_range(3, w - 3)
-			stack.append([x, y, cut, h])
-			stack.append([x + cut, y, w - cut, h])
-		else:
-			var cut := rng.randi_range(3, h - 3)
-			stack.append([x, y, w, cut])
-			stack.append([x, y + cut, w, h - cut])
+	for pid in range(PARCEL_LAYOUT.size()):
+		var r: Array = PARCEL_LAYOUT[pid]
+		for iy in range(r[1], r[1] + r[3]):
+			for ix in range(r[0], r[0] + r[2]):
+				_parcel[iy * COLS + ix] = pid
+		_parcel_rects.append(r)
 
 func _parcel_tint(idx: int) -> Color:
 	var f: float = PARCEL_TINTS[_parcel[idx] % PARCEL_TINTS.size()]
@@ -175,7 +173,8 @@ func _ensure_parcel_deco(pid: int) -> void:
 	root.position = Vector3(cx, 0.0, cz)
 
 	# 둘레 논둑: 사다리꼴 흙둑(풀 덮인 사면 + 흙 밑단) — 논물보다 한참 높은 단차.
-	# 물길/연못이 경계를 지나는 구간은 둑을 끊어 물길을 막지 않는다.
+	# 수로가 옆에 나란히 있어도 둑은 유지(실제 논 구조) — 물 연결은 물꼬가 표현.
+	# 필지 안 셀 자체가 물길/연못인 구간만 둑을 끊는다.
 	for side in range(4):
 		var horizontal := side < 2
 		var n_cells: int = r[2] if horizontal else r[3]
@@ -186,11 +185,11 @@ func _ensure_parcel_deco(pid: int) -> void:
 				if horizontal:
 					var bx: int = r[0] + i
 					var by: int = r[1] if side == 0 else r[1] + r[3] - 1
-					blocked = _is_waterway(bx, by) or _is_waterway(bx, by + (-1 if side == 0 else 1))
+					blocked = _is_waterway(bx, by)
 				else:
 					var vx: int = r[0] if side == 2 else r[0] + r[2] - 1
 					var vy: int = r[1] + i
-					blocked = _is_waterway(vx, vy) or _is_waterway(vx + (-1 if side == 2 else 1), vy)
+					blocked = _is_waterway(vx, vy)
 			if i < n_cells and not blocked:
 				if run_start < 0:
 					run_start = i
@@ -198,6 +197,32 @@ func _ensure_parcel_deco(pid: int) -> void:
 			if run_start >= 0:
 				_add_bund(root, side, w_m, h_m, run_start, i)
 				run_start = -1
+
+	# 물꼬: 수로/연못과 접한 변마다 둑을 튼 자리(최대 2곳) — 물이 넘나드는 접점
+	for side in range(4):
+		var horizontal := side < 2
+		var n_cells: int = r[2] if horizontal else r[3]
+		var touch: Array = []
+		for i in range(n_cells):
+			var tx: int
+			var ty: int
+			if horizontal:
+				tx = r[0] + i
+				ty = (r[1] - 1) if side == 0 else (r[1] + r[3])
+			else:
+				tx = (r[0] - 1) if side == 2 else (r[0] + r[2])
+				ty = r[1] + i
+			if _is_waterway(tx, ty):
+				touch.append(i)
+		if touch.is_empty():
+			continue
+		var picks: Array = []
+		if touch.size() >= 6:
+			picks = [touch[int(touch.size() / 3.0)], touch[int(touch.size() * 2.0 / 3.0)]]
+		else:
+			picks = [touch[int(touch.size() / 2.0)]]
+		for c in picks:
+			_add_mulkko(root, side, w_m, h_m, (float(c) + 0.5) / float(n_cells))
 
 	# 필지 담수(한 장) — 논둑보다 한참 낮게 고인다. 필지 안 논이 경운되면 보인다
 	var wtr := MeshInstance3D.new()
@@ -218,6 +243,35 @@ func _is_waterway(ix: int, iy: int) -> bool:
 		return false
 	var k := _kind[iy * COLS + ix]
 	return k == KIND_CANAL or k == KIND_POND
+
+## 물꼬: 논둑을 튼 물넘이 자리 — 둑 윗면보다 낮게 판 흙 턱 + 그 위를 넘는 물띠.
+## side: 0=북 1=남 2=서 3=동, t: 변을 따라 0~1 위치.
+func _add_mulkko(root: Node3D, side: int, w_m: float, h_m: float, t: float) -> void:
+	var horizontal := side < 2
+	var along := (t - 0.5) * (w_m if horizontal else h_m)
+	var off := (-h_m if side == 0 else h_m) * 0.5
+	if not horizontal:
+		off = (-w_m if side == 2 else w_m) * 0.5
+	var pos := Vector3(along, 0, off) if horizontal else Vector3(off, 0, along)
+	var cross := BUND_BASE_W + 0.6   # 둑을 완전히 가로지르는 길이
+
+	# 파인 흙 턱(둑 윗면 0.48보다 낮은 0.30)
+	var cut := MeshInstance3D.new()
+	var cm := BoxMesh.new()
+	cm.size = Vector3(0.7, 0.30, cross) if horizontal else Vector3(cross, 0.30, 0.7)
+	cut.mesh = cm
+	cut.position = pos + Vector3(0, 0.155, 0)
+	cut.material_override = Visuals.dirt_mat()
+	root.add_child(cut)
+
+	# 턱을 넘는 물
+	var wtr := MeshInstance3D.new()
+	var wm := BoxMesh.new()
+	wm.size = Vector3(0.42, 0.05, cross + 0.2) if horizontal else Vector3(cross + 0.2, 0.05, 0.42)
+	wtr.mesh = wm
+	wtr.position = pos + Vector3(0, 0.315, 0)
+	wtr.material_override = Visuals.water_mat()
+	root.add_child(wtr)
 
 ## 한 변의 [c0, c1) 셀 구간에 사다리꼴 논둑을 세운다(풀 프리즘 + 흙 밑단).
 ## side별로 높이를 미세하게 달리해 이웃 필지 둑과의 z-파이팅을 피한다.
@@ -931,10 +985,10 @@ func _update_rice(idx: int) -> void:
 	var fat := 0.4          # 포기 퍼짐 — 갓 심은 모는 작고 또렷한 포기(사이로 물이 보인다)
 	if s == GROWING:
 		h = 0.75
-		fat = 1.5
+		fat = 1.3
 	elif s == MATURE:
 		h = 1.0
-		fat = 3.4           # 빽빽한 카펫(수면이 안 보이게)
+		fat = 2.2           # 빽빽하되 잎이 찌그러지지 않는 선(잎 9장이라 이 정도로 충분)
 
 	var ix := idx % COLS
 	@warning_ignore("integer_division")
@@ -980,3 +1034,54 @@ func debug_grow(stage: int = -1) -> void:
 		_state[idx] = stage if stage >= 0 else [TILLED, PLANTED, GROWING, MATURE][n % 4]
 		_paint(idx)
 		n += 1
+
+# --- 디버그(개발용) ---
+const DEBUG_START_MATURE := true   # 시작 시 논 데모 블록 + 다 자란 벼. 배포 시 false로.
+
+## 디버그: 필지들을 통째로 논으로 만들고 벼를 채운다.
+## 논둑/담수가 필지 단위라서, 필지를 부분만 채우면 풀밭 위까지 물이 겹쳐 보인다.
+func debug_demo_paddies(stage: int = MATURE) -> void:
+	# 물 계통: 취수구(2행) → 간선 용수로(북) → 지선 용수로(필지 사이) → 배수로(남)
+	for iy in range(ENTRY_ROW + 1, CANAL_ROW + 1):   # 취수구→간선 연결(세로)
+		_force_canal(1, iy)
+	for ix in range(1, PARCEL_X1):                   # 간선 용수로(가로)
+		_force_canal(ix, CANAL_ROW)
+	for iy in range(CANAL_ROW + 1, DRAIN_ROW + 1):   # 지선 용수로(필지 사이 세로)
+		_force_canal(BRANCH_COL, iy)
+	for ix in range(PARCEL_X0, PARCEL_X1):           # 배수로(남쪽 가로)
+		_force_canal(ix, DRAIN_ROW)
+	var made := 0
+	for pid in range(_parcel_rects.size()):
+		var r: Array = _parcel_rects[pid]
+		# 필지 전체가 빈 풀밭일 때만(물길/연못/둑에 걸치면 제외)
+		var ok := true
+		for iy in range(r[1], r[1] + r[3]):
+			for ix in range(r[0], r[0] + r[2]):
+				var idx := iy * COLS + ix
+				if _kind[idx] != KIND_GROUND or _in_bank(idx):
+					ok = false
+					break
+			if not ok:
+				break
+		if not ok:
+			continue
+		for iy in range(r[1], r[1] + r[3]):
+			for ix in range(r[0], r[0] + r[2]):
+				_set_kind(iy * COLS + ix, KIND_PADDY)
+		made += 1
+	debug_grow(stage)
+	print("[FarmField/DEBUG] 필지 %d개를 논으로 채움 (stage=%d). F5: 성숙, F6: 골고루, F7: 물 댄 빈 논, F8: 마른 논" % [made, stage])
+
+## 디버그용: 풀밭 칸을 무상으로 물길로 만든다(저수지 둑 제외).
+func _force_canal(ix: int, iy: int) -> void:
+	var idx := iy * COLS + ix
+	if _kind[idx] == KIND_GROUND and not _in_bank(idx):
+		_set_kind(idx, KIND_CANAL)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_F5: debug_demo_paddies(MATURE)   # 다 자란 벼(황금 이삭)
+			KEY_F6: debug_demo_paddies(-1)       # 경운/모/분얼/성숙 골고루
+			KEY_F7: debug_demo_paddies(TILLED)   # 벼 없음 — 물 댄 논(디자인 확인)
+			KEY_F8: debug_demo_paddies(EMPTY)    # 벼 없음 — 마른 논바닥

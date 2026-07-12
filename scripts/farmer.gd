@@ -25,6 +25,13 @@ var _yaw := 0.0
 var _pitch := 1.05          # 탑다운 기본 각(약 60도)
 var _cam_dist := 18.0
 var _camera: Camera3D
+var _anim: AnimationPlayer   # 캐릭터 모델 애니메이션(없으면 null)
+
+# 외부 캐릭터 모델(Kenney Blocky Characters, CC0 — farmer_char.LICENSE.txt 참고)
+const CHAR_MODEL := "res://assets/models/farmer_char.glb"
+const CHAR_SCALE := 0.8      # 키 보정(원본 약 2.2m → 1.8m)
+const ANIM_IDLE := "idle"
+const ANIM_RUN := "sprint"
 
 func _ready() -> void:
 	_build()
@@ -43,13 +50,35 @@ func _build() -> void:
 	col.position.y = 0.9
 	add_child(col)
 
-	# 사람(농부) 외형: 파란 셔츠 + 갈색 바지 + 밀짚모자
-	add_child(HumanMesh.build(
-		Color(0.96, 0.8, 0.62),   # 피부
-		Color(0.2, 0.45, 0.8),    # 셔츠
-		Color(0.35, 0.25, 0.18),  # 바지
-		Color(0.85, 0.72, 0.4),   # 밀짚모자
-		false))
+	# 사람(농부) 외형: 외부 캐릭터 모델(애니메이션 포함) — 실패 시 블록 사람으로 폴백
+	var model := Visuals.load_glb(CHAR_MODEL)
+	if model != null:
+		model.rotation.y = PI   # glTF(+Z 전방) → Godot(-Z 전방)
+		model.scale = Vector3(CHAR_SCALE, CHAR_SCALE, CHAR_SCALE)
+		add_child(model)
+		_anim = _find_anim(model)
+		if _anim != null:
+			for a in [ANIM_IDLE, ANIM_RUN]:
+				if _anim.has_animation(a):
+					_anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
+			_anim.play(ANIM_IDLE)
+	else:
+		add_child(HumanMesh.build(
+			Color(0.96, 0.8, 0.62),   # 피부
+			Color(0.2, 0.45, 0.8),    # 셔츠
+			Color(0.35, 0.25, 0.18),  # 바지
+			Color(0.85, 0.72, 0.4),   # 밀짚모자
+			false))
+
+## 모델 하위에서 AnimationPlayer 찾기.
+func _find_anim(node: Node) -> AnimationPlayer:
+	if node is AnimationPlayer:
+		return node
+	for c in node.get_children():
+		var f := _find_anim(c)
+		if f != null:
+			return f
+	return null
 
 ## 트랙터에서 내릴 때 시점을 그대로 이어받기 위해 호출.
 func set_view(yaw: float, pitch: float) -> void:
@@ -84,6 +113,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_C: _try_build("canal")
 			KEY_B: _try_build("paddy")
 			KEY_R: _try_build("scarecrow")
+			KEY_V: _try_build("greenhouse")
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
 		# 우클릭을 누르는 동안만 마우스를 잡고 시점 회전. 떼면 즉시 해제.
 		if event.pressed and not ui_open:
@@ -121,6 +151,12 @@ func _physics_process(delta: float) -> void:
 	if move.length() > 0.01:
 		# 정면(-Z)이 이동 방향을 향하도록
 		rotation.y = lerp_angle(rotation.y, atan2(-move.x, -move.z), 0.2)
+
+	# 이동 여부에 따라 달리기/대기 애니메이션 전환
+	if _anim != null:
+		var want := ANIM_RUN if move.length() > 0.01 else ANIM_IDLE
+		if _anim.current_animation != want and _anim.has_animation(want):
+			_anim.play(want, 0.15)
 
 	move_and_slide()
 	_update_camera()
@@ -170,7 +206,30 @@ func _try_build(what: String) -> void:
 			msg = field.build_canal_at(global_position)
 		"scarecrow":
 			msg = field.build_scarecrow_at(global_position)
+		"greenhouse":
+			msg = _build_greenhouse()
 		_:
 			msg = field.build_paddy_at(global_position)
 	if hud != null and msg != "":
 		hud.flash(msg)
+
+const GREENHOUSE_COST := 40
+const GreenhouseScript := preload("res://scripts/greenhouse.gd")
+
+## 비닐하우스 설치 — 농지 밖 원지반 풀밭에, 서로 겹치지 않게.
+func _build_greenhouse() -> String:
+	var fwd := -global_transform.basis.z
+	var pos := global_position + fwd * 5.5   # 농부 앞에 설치
+	if absf(pos.x) < 34.0 and absf(pos.z) < 36.0:
+		return "비닐하우스는 농지 밖 풀밭에 지어요"
+	for g in get_tree().get_nodes_in_group("greenhouses"):
+		if (g as Node3D).global_position.distance_to(pos) < 9.0:
+			return "여기엔 이미 비닐하우스가 있어요"
+	if not GameManager.spend_money(GREENHOUSE_COST):
+		return "돈 부족 — 비닐하우스 %d원" % GREENHOUSE_COST
+	var gh := GreenhouseScript.new()
+	gh.hud = hud
+	get_parent().add_child(gh)
+	gh.global_position = pos
+	gh.rotation.y = rotation.y + PI * 0.5   # 농부가 보는 방향에 옆으로 길게
+	return "비닐하우스 설치! %d초마다 채소 수익 +%d원 (-%d원)" % [int(GreenhouseScript.CYCLE), GreenhouseScript.INCOME, GREENHOUSE_COST]

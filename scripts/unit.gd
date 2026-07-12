@@ -4,6 +4,15 @@ extends CharacterBody3D
 ## - 군사(아군/적군): 가까운 적을 찾아 교전(체력/공격/사망).
 
 const HumanMesh := preload("res://scripts/human_mesh.gd")
+const Visuals := preload("res://scripts/visuals.gd")
+
+# Kenney Blocky Characters(CC0) — 역할/진영별 스킨 (units.LICENSE.txt 참고)
+const MODEL_WORKER := "res://assets/models/unit_worker.glb"   # 노동자: 초록 티 아저씨
+const MODEL_ALLY := "res://assets/models/unit_ally.glb"       # 아군 군사: 경찰
+const MODEL_ENEMY := "res://assets/models/unit_enemy.glb"     # 적군 군사: 검은 정장
+const CHAR_SCALE := 0.8
+const ANIM_IDLE := "idle"
+const ANIM_WALK := "walk"
 
 const FACTION_PLAYER := 0
 const FACTION_ENEMY := 1
@@ -34,6 +43,8 @@ var _mode := 0
 var _atk_timer := 0.0
 var _visual: Node3D          # 몸통 메시(모내기 숙임 연출용)
 var _bow := 0.0              # 남은 숙임 시간
+var _anim: AnimationPlayer   # 캐릭터 모델 애니메이션(폴백이면 null)
+var _bow_angle := -0.7       # 숙임 각 — GLB는 y=PI 회전 상태라 부호 반대
 
 func _ready() -> void:
 	add_to_group("units")
@@ -49,14 +60,39 @@ func _ready() -> void:
 	col.position.y = 0.8
 	add_child(col)
 
-	var skin := Color(0.95, 0.78, 0.6)
-	if role == ROLE_FARMER:
-		_visual = HumanMesh.build(skin, Color(0.25, 0.7, 0.35), Color(0.3, 0.22, 0.16), Color(0.85, 0.72, 0.4), false)
-	elif faction == FACTION_PLAYER:
-		_visual = HumanMesh.build(skin, Color(0.2, 0.4, 0.85), Color(0.18, 0.2, 0.3), Color(0.5, 0.5, 0.55), true)  # 아군 파랑
+	var path := MODEL_WORKER if role == ROLE_FARMER \
+		else (MODEL_ALLY if faction == FACTION_PLAYER else MODEL_ENEMY)
+	_visual = Visuals.load_glb(path)
+	if _visual != null:
+		_visual.rotation.y = PI   # glTF(+Z 전방) → Godot(-Z 전방)
+		_visual.scale = Vector3(CHAR_SCALE, CHAR_SCALE, CHAR_SCALE)
+		_bow_angle = 0.7          # y=PI 회전 상태라 앞으로 숙이려면 +x
+		_anim = _find_anim(_visual)
+		if _anim != null:
+			for a in [ANIM_IDLE, ANIM_WALK]:
+				if _anim.has_animation(a):
+					_anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
+			_anim.play(ANIM_IDLE)
 	else:
-		_visual = HumanMesh.build(skin, Color(0.55, 0.12, 0.12), Color(0.12, 0.12, 0.14), Color(0.2, 0.2, 0.22), true)  # 적군 검붉음
+		# 폴백: 블록 사람(색으로 역할/진영 구분)
+		var skin := Color(0.95, 0.78, 0.6)
+		if role == ROLE_FARMER:
+			_visual = HumanMesh.build(skin, Color(0.25, 0.7, 0.35), Color(0.3, 0.22, 0.16), Color(0.85, 0.72, 0.4), false)
+		elif faction == FACTION_PLAYER:
+			_visual = HumanMesh.build(skin, Color(0.2, 0.4, 0.85), Color(0.18, 0.2, 0.3), Color(0.5, 0.5, 0.55), true)  # 아군 파랑
+		else:
+			_visual = HumanMesh.build(skin, Color(0.55, 0.12, 0.12), Color(0.12, 0.12, 0.14), Color(0.2, 0.2, 0.22), true)  # 적군 검붉음
 	add_child(_visual)
+
+## 모델 하위에서 AnimationPlayer 찾기.
+func _find_anim(node: Node) -> AnimationPlayer:
+	if node is AnimationPlayer:
+		return node
+	for c in node.get_children():
+		var f := _find_anim(c)
+		if f != null:
+			return f
+	return null
 
 	_health = max_health
 
@@ -76,7 +112,13 @@ func _physics_process(delta: float) -> void:
 	# 모내기 숙임(두레 연출) — 논일을 할 때 허리를 굽힌다
 	_bow = maxf(0.0, _bow - delta)
 	if _visual != null:
-		_visual.rotation.x = lerpf(_visual.rotation.x, -0.7 if _bow > 0.0 else 0.0, 0.18)
+		_visual.rotation.x = lerpf(_visual.rotation.x, _bow_angle if _bow > 0.0 else 0.0, 0.18)
+
+	# 이동 여부에 따라 걷기/대기 애니메이션 전환
+	if _anim != null:
+		var want := ANIM_WALK if dir.length() > 0.01 else ANIM_IDLE
+		if _anim.current_animation != want and _anim.has_animation(want):
+			_anim.play(want, 0.15)
 
 func take_damage(amount: int) -> void:
 	_health -= amount

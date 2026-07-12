@@ -14,6 +14,7 @@ uniform vec3 shallow: source_color = vec3(0.30, 0.58, 0.72);
 uniform vec3 deep: source_color = vec3(0.06, 0.26, 0.44);
 uniform float ripple: hint_range(0.0, 1.0) = 1.0;   // 물결 세기(0=거울)
 uniform float mirror: hint_range(0.0, 1.0) = 0.3;   // 기본 반사 세기
+uniform float opacity: hint_range(0.0, 1.0) = 1.0;  // 1=불투명, 낮추면 바닥이 비친다
 uniform sampler2D nmap: hint_normal;
 varying vec3 wpos;
 void vertex() {
@@ -32,6 +33,7 @@ void fragment() {
 	METALLIC = clamp(mirror + fres * 0.5, 0.0, 1.0);
 	ROUGHNESS = 0.05;
 	SPECULAR = 0.6;
+	ALPHA = opacity;
 }
 "
 
@@ -160,11 +162,13 @@ static func dirt_mat() -> StandardMaterial3D:
 
 ## tint: 필지별 색조 차이(실제 논은 필지마다 톤이 다르다).
 ## 스케일을 크게 잡아 타일 반복이 눈에 띄지 않게 한다.
+## 따뜻한 갈색 보정 — 원본 텍스처가 회색빛이라 흙색으로 눌러준다.
 static func dry_mud_mat(tint := Color.WHITE) -> StandardMaterial3D:
-	return pbr("dry_mud_field_001", 5.0, tint)
+	return pbr("dry_mud_field_001", 3.0, Color(1.0 * tint.r, 0.82 * tint.g, 0.58 * tint.b))
 
 static func wet_mud_mat(tint := Color.WHITE) -> StandardMaterial3D:
-	return pbr("brown_mud_02", 4.5, Color(0.75 * tint.r, 0.75 * tint.g, 0.75 * tint.b))
+	# 스케일을 줄여 흙덩이 디테일이 살게, 틴트는 따뜻한 갈색으로
+	return pbr("brown_mud_02", 2.6, Color(0.92 * tint.r, 0.66 * tint.g, 0.44 * tint.b))
 
 # ---------- 건축 ----------
 static func plaster_mat() -> StandardMaterial3D:
@@ -223,10 +227,13 @@ static func paddy_water_mat(bucket: int = 0) -> ShaderMaterial:
 	if not _paddy_waters.has(bucket):
 		var m := _make_water()
 		var f := 1.0 - 0.08 * float(bucket)
-		m.set_shader_parameter("shallow", Color(0.40 * f, 0.34 * f, 0.26 * f))
-		m.set_shader_parameter("deep", Color(0.24 * f, 0.19 * f, 0.14 * f))
-		m.set_shader_parameter("ripple", 0.15)
-		m.set_shader_parameter("mirror", 0.25)
+		# 흙탕물: 갈색이 주(主), 하늘 반사는 은은하게 — 회색 거울판이 되지 않게.
+		# 투명도를 열어 물 아래 실제 흙 텍스처(젖은 진흙 PBR)가 비치게 한다.
+		m.set_shader_parameter("shallow", Color(0.55 * f, 0.42 * f, 0.27 * f))
+		m.set_shader_parameter("deep", Color(0.36 * f, 0.26 * f, 0.16 * f))
+		m.set_shader_parameter("ripple", 0.22)
+		m.set_shader_parameter("mirror", 0.06)
+		m.set_shader_parameter("opacity", 0.55)   # 흙바닥 텍스처가 주인공
 		_paddy_waters[bucket] = m
 	return _paddy_waters[bucket]
 
@@ -277,20 +284,25 @@ static func rice_clump_mesh() -> ArrayMesh:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
-	var blades := 4
-	for i in range(blades):
-		var yaw := TAU * float(i) / float(blades) + rng.randf_range(-0.3, 0.3)
-		var tilt := rng.randf_range(0.05, 0.22)          # 밑동 기울기
-		var curl := rng.randf_range(0.35, 0.85)          # 끝으로 갈수록 휘는 정도
-		var length := rng.randf_range(0.85, 1.1)
-		_strip(st, yaw, tilt, curl, length, 0.06, 0.01, -0.5)
-	# 가운데 곧은 잎 1장
-	_strip(st, rng.randf() * TAU, 0.03, 0.15, 1.0, 0.05, 0.01, -0.5)
+	# 바깥 고리: 균일 간격으로 완만히 휘는 잎 — 지터는 아주 작게(단정한 포기)
+	var outer := 6
+	for i in range(outer):
+		var yaw := TAU * float(i) / float(outer) + rng.randf_range(-0.12, 0.12)
+		var tilt := rng.randf_range(0.10, 0.16)          # 밑동은 거의 곧게
+		var curl := rng.randf_range(0.45, 0.60)          # 끝만 살짝 바깥으로
+		var length := rng.randf_range(0.90, 1.05)
+		_strip(st, yaw, tilt, curl, length, 0.034, 0.005, -0.5, 3)
+	# 안쪽: 곧게 위로 선 잎 3장 — 벼 특유의 꼿꼿한 중심
+	for i in range(3):
+		var yaw := TAU * float(i) / 3.0 + 0.5 + rng.randf_range(-0.2, 0.2)
+		_strip(st, yaw, rng.randf_range(0.02, 0.06), rng.randf_range(0.18, 0.30),
+			rng.randf_range(1.00, 1.15), 0.028, 0.004, -0.5, 3)
 	st.generate_normals()
 	_rice_clump = st.commit()
 	return _rice_clump
 
-## 익은 벼 이삭: 포기 끝에서 바깥으로 고개 숙인 줄기 다발. 원점이 포기 상단.
+## 익은 벼 이삭: 잎 위로 솟은 가는 줄기 끝에 통통한 이삭이 고개를 숙인다.
+## 원점이 포기 상단(잎 무리 위).
 static func rice_ear_mesh() -> ArrayMesh:
 	if _rice_ear != null:
 		return _rice_ear
@@ -298,25 +310,56 @@ static func rice_ear_mesh() -> ArrayMesh:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
-	for i in range(3):
-		var yaw := TAU * float(i) / 3.0 + rng.randf_range(-0.4, 0.4)
-		var tilt := rng.randf_range(0.25, 0.45)
-		var curl := rng.randf_range(1.6, 2.2)            # 고개를 푹 숙인다
-		var length := rng.randf_range(0.32, 0.42)
-		_strip(st, yaw, tilt, curl, length, 0.04, 0.022, 0.0)
+	var ears := 5
+	for i in range(ears):
+		var yaw := TAU * float(i) / float(ears) + rng.randf_range(-0.25, 0.25)
+		_ear_strip(st, yaw, rng)
 	st.generate_normals()
 	_rice_ear = st.commit()
 	return _rice_ear
 
+## 이삭 한 가닥: 가는 줄기가 곧게 오르다 끝의 이삭(넓은 띠)이 푹 숙는다.
+static func _ear_strip(st: SurfaceTool, yaw: float, rng: RandomNumberGenerator) -> void:
+	st.set_color(Color.WHITE)
+	var r := Vector3(cos(yaw), 0, sin(yaw))
+	var side := Vector3(-sin(yaw), 0, cos(yaw))
+	var stem_l := rng.randf_range(0.26, 0.34)
+	var pan_l := rng.randf_range(0.20, 0.26)
+	# 경로 샘플: 줄기 2세그(가늘고 곧게) + 이삭 3세그(통통, 급히 숙임)
+	var pts: Array = [Vector3.ZERO]
+	var ws: Array = [0.014]
+	var p := Vector3.ZERO
+	var theta := rng.randf_range(0.08, 0.16)
+	for s in range(2):
+		theta += 0.12
+		p += (stem_l / 2.0) * (Vector3.UP * cos(theta) + r * sin(theta))
+		pts.append(p)
+		ws.append(0.014)
+	for s in range(3):
+		theta += rng.randf_range(0.55, 0.75)
+		p += (pan_l / 3.0) * (Vector3.UP * cos(theta) + r * sin(theta))
+		pts.append(p)
+		ws.append(lerpf(0.052, 0.028, float(s) / 2.0))   # 이삭은 밑이 도톰, 끝이 뾰족
+	var prev_l := Vector3.ZERO
+	var prev_r := Vector3.ZERO
+	for i in range(pts.size()):
+		var w: float = ws[i] * 0.5
+		var vl: Vector3 = pts[i] - side * w
+		var vr: Vector3 = pts[i] + side * w
+		if i > 0:
+			st.add_vertex(prev_l); st.add_vertex(prev_r); st.add_vertex(vl)
+			st.add_vertex(prev_r); st.add_vertex(vr); st.add_vertex(vl)
+		prev_l = vl
+		prev_r = vr
+
 ## 휘어지는 띠(잎/이삭) 하나를 SurfaceTool에 추가.
 ## yaw: 뻗는 방향, tilt: 시작 기울기, curl: 진행할수록 눕는 각, y0: 시작 높이.
 static func _strip(st: SurfaceTool, yaw: float, tilt: float, curl: float,
-		length: float, w0: float, w1: float, y0: float) -> void:
+		length: float, w0: float, w1: float, y0: float, segs: int = 2) -> void:
 	# 흰색 버텍스 컬러 — 메시에 COLOR 속성이 있어야 MultiMesh 인스턴스 색이 적용된다.
 	st.set_color(Color.WHITE)
 	var r := Vector3(cos(yaw), 0, sin(yaw))
 	var side := Vector3(-sin(yaw), 0, cos(yaw))
-	var segs := 2
 	var p := Vector3(0, y0, 0) + r * 0.02
 	var prev_l := Vector3.ZERO
 	var prev_r := Vector3.ZERO
