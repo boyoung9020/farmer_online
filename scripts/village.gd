@@ -181,29 +181,50 @@ func _persimmon() -> Node3D:
 	return root
 
 # --- 농로 (콘크리트 포장길: 마을~농지~고용소, 경운기/트랙터 통행로) ---
-func _build_roads() -> void:
-	# 시골 흙길: 경계선 없이, 완전한 갈색 흙(마른 진흙 텍스처 + 갈색 틴트)
-	var soil := Visuals.pbr("brown_mud_02", 3.2, Color(1.0, 0.82, 0.62))
+# 흙길 셰이더: 옅은 마른 흙 + 가장자리가 불규칙하게 풀로 스며드는 페이드(직각 경계 제거)
+const DIRT_ROAD_SHADER := "
+shader_type spatial;
+uniform sampler2D albedo_tex: source_color, filter_linear_mipmap_anisotropic;
+uniform vec3 tint: source_color = vec3(1.0, 0.94, 0.82);
+uniform float tex_scale = 3.4;
+varying vec3 wpos;
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	vec3 alb = texture(albedo_tex, wpos.xz / tex_scale).rgb;
+	float d = min(UV.y, 1.0 - UV.y);   // 폭 방향 가장자리 거리
+	float wob = sin(UV.x * 90.0) * 0.02 + sin(UV.x * 33.0 + 1.7) * 0.035;
+	ALPHA = smoothstep(0.02 + wob, 0.17 + wob, d);
+	ALBEDO = alb * tint;
+	ROUGHNESS = 1.0;
+}
+"
+static var _dirt_road_mat: ShaderMaterial
 
+func _build_roads() -> void:
 	# [세로] 남북 간선(농지 서쪽 가장자리) / [가로] 마을 안길, 남쪽 농로(농기계 주차장 앞)
-	_dirt_road(Vector3(-32.8, 0.05, -3.0), 3.2, 92.0, false, soil)
-	_dirt_road(Vector3(-7.0, 0.05, -38.0), 2.6, 52.0, true, soil)
-	_dirt_road(Vector3(-5.0, 0.05, 34.0), 2.8, 56.0, true, soil)
+	_dirt_road(Vector3(-32.8, 0.045, -3.0), 3.2, 92.0, false)
+	_dirt_road(Vector3(-7.0, 0.045, -38.0), 2.6, 52.0, true)
+	_dirt_road(Vector3(-5.0, 0.045, 34.0), 2.8, 56.0, true)
 
 	_build_street_lamps()
 
-## 흙길 한 판(가장자리 라인 없음).
-func _dirt_road(pos: Vector3, width: float, length: float, horizontal: bool, soil: Material) -> void:
-	var size := Vector3(length, 0.08, width) if horizontal else Vector3(width, 0.08, length)
-	_road(pos, size, soil)
-
-func _road(pos: Vector3, size: Vector3, mat: Material) -> void:
+## 흙길 한 판 — 가장자리가 풀에 자연스럽게 섞이는 평면.
+func _dirt_road(pos: Vector3, width: float, length: float, horizontal: bool) -> void:
+	if _dirt_road_mat == null:
+		var sh := Shader.new()
+		sh.code = DIRT_ROAD_SHADER
+		_dirt_road_mat = ShaderMaterial.new()
+		_dirt_road_mat.shader = sh
+		_dirt_road_mat.set_shader_parameter("albedo_tex", Visuals.tex("dry_mud_field_001_diff.jpg"))
 	var m := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = size
-	m.mesh = bm
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(length, width)
+	m.mesh = pm
 	m.position = pos
-	m.material_override = mat
+	if not horizontal:
+		m.rotation.y = PI * 0.5
+	m.material_override = _dirt_road_mat
+	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(m)
 
 # --- 가로등 (도로변, 밤에 점등 — day_cycle이 그룹으로 제어) ---

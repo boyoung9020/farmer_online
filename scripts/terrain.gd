@@ -22,7 +22,7 @@ const FLAT_FALLOFF := 70.0    # 평지 경계에서 언덕까지 전환 거리(m
 # 경작지 침하: 실제 논은 마을·길보다 낮다. 경계 안쪽으로 사면을 만들며 파인다.
 const FARM_RECT := [-30.0, 30.0, -32.0, 32.0]   # 농지 그리드(월드 XZ)
 const FARM_DEPTH := 1.6                          # 침하 깊이(m) — 마을·길에서 뚜렷하게 내려다보인다
-const FARM_BLEND := 6.0                          # 가장자리 사면 폭(m, 안쪽 방향)
+const FARM_BLEND := 8.0                          # 가장자리 사면 폭(m, 안쪽 방향) — 완만한 풀 사면
 
 const MAP_HALF := 1024.0      # Terrain3D 커버 반경(m) — 2x2 리전(리전 1024)
 const BAKE_RES := 512         # 하이트맵 계산 해상도(4m 간격) → 2048로 업샘플
@@ -95,7 +95,7 @@ func _build_terrain3d() -> void:
 	# 주의: 이 셰이더는 평지=overlay, 급경사=base 방향으로 블렌딩된다(소스 확인)
 	terrain.material.set_shader_param("auto_base_texture", 1)      # 급경사 = 바위
 	terrain.material.set_shader_param("auto_overlay_texture", 0)   # 평지 = 풀
-	terrain.material.set_shader_param("auto_slope", 4.0)
+	terrain.material.set_shader_param("auto_slope", 2.0)   # 바위는 45°+ 절벽(산)에만 — 농지 사면은 풀
 	terrain.material.set_shader_param("blend_sharpness", 0.92)
 
 	# 텍스처 에셋: 기존 PBR 텍스처를 채널 패킹해 등록
