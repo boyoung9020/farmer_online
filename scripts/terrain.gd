@@ -19,6 +19,11 @@ const FLAT_RECTS := [
 ]
 const FLAT_FALLOFF := 70.0    # 평지 경계에서 언덕까지 전환 거리(m)
 
+# 경작지 침하: 실제 논은 마을·길보다 낮다. 경계 안쪽으로 사면을 만들며 파인다.
+const FARM_RECT := [-30.0, 30.0, -32.0, 32.0]   # 농지 그리드(월드 XZ)
+const FARM_DEPTH := 0.7                          # 침하 깊이(m)
+const FARM_BLEND := 4.0                          # 가장자리 사면 폭(m, 안쪽 방향)
+
 const MAP_HALF := 1024.0      # Terrain3D 커버 반경(m) — 2x2 리전(리전 1024)
 const BAKE_RES := 512         # 하이트맵 계산 해상도(4m 간격) → 2048로 업샘플
 
@@ -68,7 +73,16 @@ func height_at(x: float, z: float) -> float:
 		var mn := 1.0 - absf(_noise.get_noise_2d(x * 0.7 + 555.0, z * 0.7))
 		h += mfar * mn * mn * 120.0
 
-	return h * edge_f * flat_f
+	var out := h * edge_f * flat_f
+
+	# 경작지 침하 — 도로·마을(원지반)보다 낮은 논 지대. 경계에서 안쪽으로 사면.
+	var din: float = min(
+		min(x - FARM_RECT[0], FARM_RECT[1] - x),
+		min(z - FARM_RECT[2], FARM_RECT[3] - z))
+	if din > 0.0:
+		out -= FARM_DEPTH * smoothstep(0.0, 1.0, din / FARM_BLEND)
+
+	return out
 
 func _build_terrain3d() -> void:
 	terrain = Terrain3D.new()

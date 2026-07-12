@@ -60,6 +60,7 @@ var _rice_mms: Dictionary = {}   # 생육 단계 -> 벼 포기 MultiMesh (단계
 var _ear_mm: MultiMesh           # 익은 벼 이삭(성숙 시에만 표시)
 var _scarecrows: Array = []      # 허수아비 월드 좌표 목록
 var _parcel: PackedInt32Array    # 셀 -> 필지 id (실제 논의 불규칙 필지 모자이크)
+var _pond_parent: Node3D         # 저수지/수문/인입수로 — 침하된 농지와 달리 원지반(y=0) 위
 var _parcel_rects: Array = []    # pid -> [x, y, w, h] (셀 좌표)
 var _parcel_deco: Dictionary = {}  # pid -> {"root": Node3D, "water": MeshInstance3D}
 
@@ -98,6 +99,11 @@ func _ready() -> void:
 			_state[idx] = EMPTY
 			_timer[idx] = 0.0
 			_ground[idx] = null
+
+	# 저수지 일체는 농지 침하와 무관하게 원지반 높이에 선다
+	_pond_parent = Node3D.new()
+	_pond_parent.position.y = -position.y
+	add_child(_pond_parent)
 
 	_carve_pond()
 	# 취수구: 인입수로가 서쪽 경계로 들어오는 물길 2칸 — 여기서부터 물길(C)을 이어 짓는다
@@ -357,7 +363,7 @@ func _pond_fan(pad: float, y: float, mat: Material) -> void:
 	mi.mesh = st.commit()
 	mi.position = Vector3(cx, y, cz)
 	mi.material_override = mat
-	add_child(mi)
+	_pond_parent.add_child(mi)
 
 ## 두 윤곽선(pad/높이) 사이 띠 메시 — 저수지 제방 사면/둑마루용.
 func _pond_ring(pad_out: float, y_out: float, pad_in: float, y_in: float, mat: Material, walkable := false) -> void:
@@ -387,7 +393,7 @@ func _pond_ring(pad_out: float, y_out: float, pad_in: float, y_in: float, mat: M
 	mi.mesh = st.commit()
 	mi.position = Vector3(cx, 0.0, cz)
 	mi.material_override = mat
-	add_child(mi)
+	_pond_parent.add_child(mi)
 	if walkable:
 		mi.create_trimesh_collision()
 
@@ -440,8 +446,8 @@ func _build_sluice() -> void:
 	wheel.position = Vector3(0, 2.18, 0)
 	wheel.material_override = metal
 	root.add_child(wheel)
-	add_child(root)
-	root.look_at(Vector3(entry.x, 0.0, entry.y), Vector3.UP)   # 물막이 판이 흐름과 직각
+	_pond_parent.add_child(root)
+	root.look_at(Vector3(entry.x, root.global_position.y, entry.y), Vector3.UP)   # 물막이 판이 흐름과 직각
 
 	# 인입수로(도수로): 제방 통관 출구에서 간선도로 앞까지 — 도로 밑은 암거로 지나
 	var p0 := _pond_edge(best_ang, 2.45)
@@ -458,8 +464,8 @@ func _feeder_channel(a: Vector2, b: Vector2) -> void:
 	var mid := (a + b) * 0.5
 	var root := Node3D.new()
 	root.position = Vector3(mid.x, 0.0, mid.y)
-	add_child(root)
-	root.look_at(Vector3(b.x, 0.0, b.y), Vector3.UP)
+	_pond_parent.add_child(root)
+	root.look_at(Vector3(b.x, root.global_position.y, b.y), Vector3.UP)
 	var L := a.distance_to(b)
 	var bed := MeshInstance3D.new()
 	var bedm := BoxMesh.new()
@@ -528,7 +534,7 @@ func _carve_pond() -> void:
 		reed.mesh = rm
 		reed.position = Vector3(e.x, 0.55 + rm.height * 0.5, e.y)
 		reed.material_override = reed_mat
-		add_child(reed)
+		_pond_parent.add_child(reed)
 
 ## 적 AI용: 취수구에서 이어지는 가로 인입선 + 세로 간선 + 남쪽 경작지 가로 지선.
 func build_default_irrigation() -> void:

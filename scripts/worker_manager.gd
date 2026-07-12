@@ -9,7 +9,7 @@ const SAECHAM_COST := 25                  # 새참(막걸리+국수) 값
 const SAECHAM_TIME := 45.0                # 새참 효과 시간(초)
 const SAECHAM_SPEED := 6.8                # 새참 먹은 일꾼 속도(기본 4.2)
 const RALLY := Vector3(60, 0, 40)        # 군사 집결지
-const SPAWN_BASE := Vector3(-10, 1.0, 30) # 고용 시 등장 위치
+const SPAWN_BASE := Vector3(-10, 1.0, 39) # 고용 시 등장 위치(고용소 옆 원지반)
 
 var field
 var hud

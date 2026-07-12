@@ -68,7 +68,7 @@ func _build_quality_trees() -> void:
 		["pine", Vector3(24.5, 0, -34.2), 0.3, 1.0],  # 마을길 동쪽 끝
 		# 농로변은 가벼운 잎카드 나무(76만 폴리 실사 나무는 정자나무 1그루 전용)
 		["zelkova", Vector3(-14, 0, 38.5), 1.8, 1.0],
-		["zelkova", Vector3(14, 0, 38), 4.6, 0.9],
+		["zelkova", Vector3(23.5, 0, 38.6), 4.6, 0.9],   # 농기계 주차열과 안 겹치게
 		["pine", Vector3(-37, 0, 30), 2.9, 1.0],
 	]
 	for s in spots:
@@ -95,7 +95,7 @@ func _build_korean_trees() -> void:
 		add_child(w)
 	# 감나무 — 집 마당마다 한 그루씩(주황 감이 달린)
 	for s in [[Vector3(-17.5, 0, -39.0), 0.0], [Vector3(3.5, 0, -42.5), 1.2],
-			[Vector3(16.5, 0, -40.0), 2.4], [Vector3(-23.0, 0, -30.0), 0.7]]:
+			[Vector3(16.5, 0, -40.0), 2.4], [Vector3(-22.5, 0, -33.8), 0.7]]:
 		var p := _persimmon()
 		p.position = s[0]
 		p.rotation.y = s[1]
@@ -182,21 +182,18 @@ func _persimmon() -> Node3D:
 
 # --- 농로 (콘크리트 포장길: 마을~농지~고용소, 경운기/트랙터 통행로) ---
 func _build_roads() -> void:
-	var conc := StandardMaterial3D.new()
-	conc.albedo_color = Color(0.52, 0.51, 0.48)
-	conc.roughness = 0.95
-	var edge := StandardMaterial3D.new()
-	edge.albedo_color = Color(0.62, 0.61, 0.57)
-	edge.roughness = 0.95
+	# 시골 흙길: 바닥은 흙(PBR), 갓길은 풀 — 콘크리트 아님
+	var soil := Visuals.dirt_mat()
+	var edge := Visuals.grass_mat()
 
 	# [세로] 남북 간선(농지 서쪽 가장자리) / [가로] 마을 안길, 남쪽 농로(농기계 주차장 앞)
-	_road_with_edges(Vector3(-32.8, 0.05, -3.0), 3.2, 92.0, false, conc, edge)
-	_road_with_edges(Vector3(-7.0, 0.05, -38.0), 2.6, 52.0, true, conc, edge)
-	_road_with_edges(Vector3(-5.0, 0.05, 34.0), 2.8, 56.0, true, conc, edge)
+	_road_with_edges(Vector3(-32.8, 0.05, -3.0), 3.2, 92.0, false, soil, edge)
+	_road_with_edges(Vector3(-7.0, 0.05, -38.0), 2.6, 52.0, true, soil, edge)
+	_road_with_edges(Vector3(-5.0, 0.05, 34.0), 2.8, 56.0, true, soil, edge)
 
 	_build_street_lamps()
 
-## 도로판 + 양쪽 가장자리 라인(콘크리트 슬래브 느낌).
+## 도로판 + 양쪽 가장자리 라인(흙길 + 풀 갓길).
 func _road_with_edges(pos: Vector3, width: float, length: float, horizontal: bool,
 		conc: Material, edge: Material) -> void:
 	var size := Vector3(length, 0.08, width) if horizontal else Vector3(width, 0.08, length)

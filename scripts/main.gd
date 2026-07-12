@@ -38,28 +38,30 @@ func _ready() -> void:
 	add_child(terrain)
 
 	var field = FarmFieldScript.new()
+	field.position.y = -0.7   # 경작지 침하(terrain.gd FARM_DEPTH와 동일) — 논은 마을보다 낮다
 	add_child(field)
 
 	var village = VillageScript.new()
 	village.terrain = terrain
 	add_child(village)
 
+	# 농부/농기계/상점은 침하된 논이 아니라 남쪽 농로변 원지반에 선다
 	var farmer = FarmerScript.new()
-	farmer.position = Vector3(0, 1.5, 30.0)
+	farmer.position = Vector3(0, 1.5, 38.5)
 	add_child(farmer)
 
 	var tractor = TractorScript.new()
-	tractor.position = Vector3(5, 1.5, 30.0)  # 농부 옆에 주차
+	tractor.position = Vector3(5, 1.5, 38.5)  # 농부 옆에 주차
 	tractor.field = field
 	add_child(tractor)
 
 	var transplanter = TransplanterScript.new()
-	transplanter.position = Vector3(10, 1.5, 30.0)  # 트랙터 옆에 주차
+	transplanter.position = Vector3(10, 1.5, 38.5)  # 트랙터 옆에 주차
 	transplanter.field = field
 	add_child(transplanter)
 
 	var combine = CombineScript.new()
-	combine.position = Vector3(15.5, 1.5, 30.0)  # 이앙기 옆에 주차
+	combine.position = Vector3(15.5, 1.5, 38.5)  # 이앙기 옆에 주차
 	combine.field = field
 	add_child(combine)
 
@@ -83,7 +85,7 @@ func _ready() -> void:
 
 	# 고용소(상점) + 상점 UI
 	var shop = ShopScript.new()
-	shop.position = Vector3(-8, 0, 30)
+	shop.position = Vector3(-8, 0, 39)   # 남쪽 농로 건너편(원지반)
 	add_child(shop)
 
 	var shop_ui = ShopUiScript.new()
@@ -188,7 +190,7 @@ func _setup_base_ground() -> void:
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(14000, 14000)   # 보구곶리 전체(약 6.5km) 덮도록
 	mi.mesh = pm
-	mi.position.y = -0.05
+	mi.position.y = -0.95   # 침하 경작지(-0.7)보다 아래 — Terrain3D 지형이 위를 덮는다
 	mi.material_override = Visuals.grass_field_mat()   # 언덕 지형과 같은 디타일링 풀
 	ground.add_child(mi)
 
@@ -196,7 +198,7 @@ func _setup_base_ground() -> void:
 	var box := BoxShape3D.new()
 	box.size = Vector3(14000, 0.2, 14000)
 	col.shape = box
-	col.position.y = -0.15
+	col.position.y = -1.05
 	ground.add_child(col)
 	add_child(ground)
 
