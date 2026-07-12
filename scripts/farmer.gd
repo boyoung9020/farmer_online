@@ -6,8 +6,8 @@ const SPEED := 7.0
 const GRAVITY := 22.0
 const MOUSE_SENS := 0.003
 const BOARD_RANGE := 4.5
-const ZOOM_MIN := 8.0
-const ZOOM_MAX := 40.0
+const ZOOM_MIN := 5.0
+const ZOOM_MAX := 110.0   # 널널한 시야(들판 전체가 들어오는 거리까지)
 
 const HumanMesh := preload("res://scripts/human_mesh.gd")
 const Visuals := preload("res://scripts/visuals.gd")
@@ -76,7 +76,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_yaw -= event.relative.x * MOUSE_SENS
-		_pitch = clamp(_pitch + event.relative.y * MOUSE_SENS, 0.7, 1.45)  # 탑다운 각 유지
+		_pitch = clamp(_pitch + event.relative.y * MOUSE_SENS, 0.12, 1.52)  # 거의 수평~수직 자유각
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_F: _try_board()

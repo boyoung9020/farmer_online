@@ -8,8 +8,8 @@ const ACCEL := 10.0
 const TURN_SPEED := 1.6
 const GRAVITY := 22.0
 const MOUSE_SENS := 0.003
-const ZOOM_MIN := 10.0
-const ZOOM_MAX := 45.0
+const ZOOM_MIN := 6.0
+const ZOOM_MAX := 110.0   # 널널한 시야
 
 # 파생 탈것이 _init에서 바꾸는 값들
 var max_speed := 7.5
@@ -78,7 +78,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_yaw -= event.relative.x * MOUSE_SENS
-		_pitch = clamp(_pitch + event.relative.y * MOUSE_SENS, 0.7, 1.45)
+		_pitch = clamp(_pitch + event.relative.y * MOUSE_SENS, 0.12, 1.52)  # 거의 수평~수직 자유각
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F:
 			_exit()
