@@ -192,8 +192,8 @@ void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	vec3 alb = texture(albedo_tex, wpos.xz / tex_scale).rgb;
 	float d = min(UV.y, 1.0 - UV.y);   // 폭 방향 가장자리 거리
-	float wob = sin(UV.x * 90.0) * 0.02 + sin(UV.x * 33.0 + 1.7) * 0.035;
-	ALPHA = smoothstep(0.02 + wob, 0.17 + wob, d);
+	float wob = sin(UV.x * 90.0) * 0.03 + sin(UV.x * 33.0 + 1.7) * 0.05;
+	ALPHA = smoothstep(0.01 + wob, 0.34 + wob, d);   // 넓은 그라데이션 — 중심만 진하고 서서히 풀로
 	ALBEDO = alb * tint;
 	ROUGHNESS = 1.0;
 }
@@ -202,9 +202,10 @@ static var _dirt_road_mat: ShaderMaterial
 
 func _build_roads() -> void:
 	# [세로] 남북 간선(농지 서쪽 가장자리) / [가로] 마을 안길, 남쪽 농로(농기계 주차장 앞)
-	_dirt_road(Vector3(-32.8, 0.045, -3.0), 3.2, 92.0, false)
-	_dirt_road(Vector3(-7.0, 0.045, -38.0), 2.6, 52.0, true)
-	_dirt_road(Vector3(-5.0, 0.045, 34.0), 2.8, 56.0, true)
+	# 폭은 넓은 가장자리 그라데이션을 감안해 여유 있게
+	_dirt_road(Vector3(-32.8, 0.045, -3.0), 4.4, 92.0, false)
+	_dirt_road(Vector3(-7.0, 0.045, -38.0), 3.6, 52.0, true)
+	_dirt_road(Vector3(-5.0, 0.045, 34.0), 3.9, 56.0, true)
 
 	_build_street_lamps()
 
