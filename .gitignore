@@ -9,3 +9,6 @@
 # OS
 Thumbs.db
 .DS_Store
+
+# 현장 원본 촬영본(HEIC/MOV, 대용량) — 변환본은 refs/bogu_* 로 관리
+real_ref/

@@ -136,6 +136,30 @@ func _setup_environment() -> void:
 	sm.ground_horizon_color = Color(0.72, 0.78, 0.76)
 	sm.ground_bottom_color = Color(0.22, 0.28, 0.22)
 	sm.sun_angle_max = 25.0
+
+	# 구름 커버 — 현장 실사(bogu 전 장에 구름 가득)의 여름 뭉게/양떼구름 느낌.
+	# 노이즈 텍스처를 sky_cover 로 써서 텍스처 에셋 없이 절차 생성.
+	var cloud_noise := FastNoiseLite.new()
+	cloud_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	cloud_noise.frequency = 0.006
+	cloud_noise.fractal_octaves = 5
+	cloud_noise.fractal_gain = 0.55
+	cloud_noise.seed = 20260718
+	var cloud_tex := NoiseTexture2D.new()
+	cloud_tex.noise = cloud_noise
+	cloud_tex.seamless = true
+	cloud_tex.width = 1024
+	cloud_tex.height = 512
+	# 노이즈 중간값 이상만 구름으로 — 파란 하늘 사이 뭉게구름 덩어리
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0.0))
+	ramp.add_point(0.52, Color(1, 1, 1, 0.0))
+	ramp.add_point(0.62, Color(1, 1, 1, 0.55))
+	ramp.set_color(1, Color(1, 1, 1, 0.95))
+	cloud_tex.color_ramp = ramp
+	sm.sky_cover = cloud_tex
+	sm.sky_cover_modulate = Color(1.0, 1.0, 1.0, 1.0)
+
 	sky.sky_material = sm
 	env.sky = sky
 

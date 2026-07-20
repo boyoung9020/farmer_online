@@ -470,39 +470,111 @@ func _build_power_lines() -> void:
 	var wire_mat := StandardMaterial3D.new()
 	wire_mat.albedo_color = Color(0.05, 0.05, 0.05)
 
+	# [세로 간선] 서쪽 도로변 남북 행렬 — 3대마다 변압기(현장 실사 bogu_02)
 	var xline := -40.0
 	var tops: Array = []
 	var z := 44.0
+	var idx := 0
 	while z > -565.0:
 		var y := _h(xline, z)
-		var pole := Node3D.new()
-		pole.position = Vector3(xline, y, z)
-		# 기둥
-		var post := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.09
-		cm.bottom_radius = 0.14
-		cm.height = 8.0
-		post.mesh = cm
-		post.position = Vector3(0, 4.0, 0)
-		post.material_override = pole_mat
-		pole.add_child(post)
-		# 가로대(완철)
-		var arm := MeshInstance3D.new()
-		var am := BoxMesh.new()
-		am.size = Vector3(1.6, 0.09, 0.09)
-		arm.mesh = am
-		arm.position = Vector3(0, 7.4, 0)
-		arm.material_override = pole_mat
-		pole.add_child(arm)
-		add_child(pole)
-		tops.append(Vector3(xline, y + 7.4, z))
+		var top := _pole(Vector3(xline, y, z), pole_mat, idx % 3 == 1)
+		tops.append(top)
 		z -= 26.0
+		idx += 1
 
 	# 전선 3가닥(가로대 양끝 + 중앙 위)
 	for i in range(tops.size() - 1):
 		for off in [Vector3(-0.7, 0, 0), Vector3(0.7, 0, 0), Vector3(0, 0.35, 0)]:
 			_wire(tops[i] + off, tops[i + 1] + off, wire_mat)
+
+	# [가로 지선] 논 한가운데를 가로지르는 행렬 — 현장 실사 bogu_08 시그니처.
+	# 서쪽 간선(x=-40)에서 분기해 경작지(60m 폭)를 동쪽으로 관통. 논바닥은 -1.6 침하.
+	var zline := 12.0
+	var cross_tops: Array = []
+	var x := -40.0
+	while x < 58.0:
+		var in_paddy := x > -31.0 and x < 31.0
+		var py := (-1.6) if in_paddy else _h(x, zline)
+		# 논 안 전주는 콘크리트 기초가 물 위로 드러난다
+		var top := _pole(Vector3(x, py, zline), pole_mat, false, in_paddy)
+		cross_tops.append(top)
+		x += 14.0
+	for i in range(cross_tops.size() - 1):
+		for off in [Vector3(0, 0, -0.7), Vector3(0, 0, 0.7), Vector3(0, 0.35, 0)]:
+			_wire(cross_tops[i] + off, cross_tops[i + 1] + off, wire_mat)
+
+## 전신주 1대 조립 — 기둥+완철+애자(+선택: 변압기 드럼, 논 기초). 완철 상단 좌표 반환.
+func _pole(pos: Vector3, pole_mat: Material, with_transformer := false, paddy_base := false) -> Vector3:
+	var pole := Node3D.new()
+	pole.position = pos
+	# 기둥
+	var post := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.09
+	cm.bottom_radius = 0.14
+	cm.height = 8.0
+	post.mesh = cm
+	post.position = Vector3(0, 4.0, 0)
+	post.material_override = pole_mat
+	pole.add_child(post)
+	# 가로대(완철) — 세로선은 X방향, 가로선은 Z방향 완철이지만 러프 단계라 십자 겸용
+	var arm := MeshInstance3D.new()
+	var am := BoxMesh.new()
+	am.size = Vector3(1.6, 0.09, 0.09)
+	arm.mesh = am
+	arm.position = Vector3(0, 7.4, 0)
+	arm.material_override = pole_mat
+	pole.add_child(arm)
+	var arm2 := MeshInstance3D.new()
+	arm2.mesh = am
+	arm2.position = Vector3(0, 7.4, 0)
+	arm2.rotation.y = PI * 0.5
+	arm2.material_override = pole_mat
+	pole.add_child(arm2)
+	# 애자(흰 사기 절연체) — 완철 양끝 위 작은 원기둥
+	var ins_mat := StandardMaterial3D.new()
+	ins_mat.albedo_color = Color(0.92, 0.92, 0.88)
+	ins_mat.roughness = 0.4
+	for ix in [-0.7, 0.7]:
+		var ins := MeshInstance3D.new()
+		var im := CylinderMesh.new()
+		im.top_radius = 0.05
+		im.bottom_radius = 0.07
+		im.height = 0.16
+		ins.mesh = im
+		ins.position = Vector3(ix, 7.52, 0)
+		ins.material_override = ins_mat
+		pole.add_child(ins)
+	# 변압기 드럼(회색 원통) — 실사처럼 기둥 옆에 매달림
+	if with_transformer:
+		var tr := MeshInstance3D.new()
+		var tm := CylinderMesh.new()
+		tm.top_radius = 0.32
+		tm.bottom_radius = 0.32
+		tm.height = 0.9
+		tr.mesh = tm
+		tr.position = Vector3(0.38, 6.3, 0)
+		var tr_mat := StandardMaterial3D.new()
+		tr_mat.albedo_color = Color(0.62, 0.63, 0.60)
+		tr_mat.roughness = 0.7
+		tr.material_override = tr_mat
+		pole.add_child(tr)
+	# 논 안 전주 콘크리트 기초
+	if paddy_base:
+		var base := MeshInstance3D.new()
+		var bm2 := CylinderMesh.new()
+		bm2.top_radius = 0.35
+		bm2.bottom_radius = 0.45
+		bm2.height = 0.8
+		base.mesh = bm2
+		base.position = Vector3(0, 0.4, 0)
+		var base_mat := StandardMaterial3D.new()
+		base_mat.albedo_color = Color(0.70, 0.69, 0.65)
+		base_mat.roughness = 0.95
+		base.material_override = base_mat
+		pole.add_child(base)
+	add_child(pole)
+	return pos + Vector3(0, 7.4, 0)
 
 func _wire(p1: Vector3, p2: Vector3, mat: Material) -> void:
 	var mid := (p1 + p2) * 0.5 - Vector3(0, 0.25, 0)   # 살짝 처짐
